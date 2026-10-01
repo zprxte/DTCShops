@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 2026-09-04 — the standalone "Admin" table (custom-made for this project,
+// not part of the real dtcshops.com schema) was dropped; admin login now
+// authenticates directly against tbl_users (dtcshops's own real accounts
+// table, restored from the production dump) instead. Only the columns
+// auth.js actually needs are modeled here — tbl_users has several more
+// (name/lastname/tel/profile/last_login/...) left unmapped since nothing
+// reads them yet.
+model tbl_users {
+  user_id  String  @id @db.VarChar(50)
+  username String  @db.VarChar(50)
+  password String? @db.VarChar(200)
+  flag     String? @default("1") @db.VarChar(1)
+}
+
+model tbl_item_type {
+  itm_type_code      String    @id @db.VarChar(50)
+  itm_type_desc      String?   @db.VarChar(100)
+  itm_type_flag      String?   @db.VarChar(2)
+  itm_type_end_point String?   @db.VarChar(200)
+  itm_type_tooltip   String?   @db.VarChar(200)
+  itm_type_seo       String?   @db.VarChar(255)
+  ist_dt             DateTime? @db.Timestamptz
+  mdf_dt             DateTime? @db.Timestamptz
+  rm_dt              DateTime? @db.Timestamptz
+  thumbnail          String?   @db.VarChar(250)
+  itm_type_slug      String?   @db.VarChar(250)
+  slug               String?   @db.VarChar(100)
+  canonical_url      String?   @db.VarChar(255)
+
+  items tbl_item[]
+
+  @@map("tbl_item_type")
+}
+
+model tbl_item {
+  itm_code             String   @id @db.VarChar(50)
+  itm_no               String?
+  itm_desc             String
+  itm_flag             String   @default("1")
+  itm_shopee_end_point String?
+  itm_lazada_end_point String?
+  itm_tiktok_end_point String?
+  itm_line_end_point   String?
+  itm_tooltip          String?
+  itm_information      String?
+  itm_seo              String?
+  itm_lowest_price     Float
+  itm_image_master     String?
+  itm_image_sub1       String?
+  itm_image_sub2       String?
+  itm_image_sub3       String?
+  itm_image_sub4       String?
+  itm_image_sub5       String?
+  itm_image_sub6       String?
+  itm_image_sub7       String?
+  itm_image_sub8       String?
+  itm_image_sub9       String?
+  itm_video_master     String?
+  ist_dt               DateTime?
+  mdf_dt               DateTime?
+  rm_dt                DateTime?
+  pb_dt                DateTime?
+  exp_dt               DateTime?
+  itm_model_code       String?   @db.VarChar(500)
+  itm_tags             String?   @db.VarChar(255)
+  itm_type_code        String?   @db.VarChar(50)
+  itm_highest_price    Float
+  slug                 String?   @db.VarChar(100)
+  itm_option_code      String?   @db.VarChar(500)
+  itm_sku              String?   @db.VarChar(50)
+  itm_guarantee        String?   @db.VarChar(250)
+  itm_shipping         String?   @db.VarChar(250)
+  itm_sold             Int?      @default(0)
+  itm_price            Float     @default(0)
+  itm_qty              Int?      @default(0)
+  view                 Int       @default(0)
+  canonical_url        String?   @db.VarChar(255)
+  seo_title            String?
+  seo_desc             String?
+
+  item_type        tbl_item_type?         @relation(fields: [itm_type_code], references: [itm_type_code])
+  attribute_values tbl_attribute_value[]
+
+  // Index ตามรูปแบบ query ที่ใช้จริง (Week 15 — database query optimization)
+  //   [itm_flag, ist_dt]  → GET /api/products ค่าเริ่มต้น (สินค้าที่ยังขายอยู่ เรียงใหม่สุด)
+  //   [itm_flag, itm_price] → เรียงตามราคา
+  //   [slug]              → GET /api/products/:id เปิดหน้าสินค้าจาก URL
+  //   [itm_sku]           → เช็ค SKU ซ้ำตอนแอดมินบันทึกสินค้า
+  @@index([itm_flag, ist_dt])
+  @@index([itm_flag, itm_price])
+  @@index([slug])
+  @@index([itm_sku])
+  @@map("tbl_item")
+}
+
+model tbl_item_model {
+  id                    Int      @default(autoincrement())
+  itm_model_code        String   @id @db.VarChar(50)
+  itm_model_desc        String?  @db.VarChar(100)
+  itm_model_flag        String?  @db.VarChar(2)
+  itm_model_addon_price Float?
+  ist_dt                DateTime?
+  mdf_dt                DateTime?
+  rm_dt                 DateTime?
+  qty                   Int      @default(0)
+
+  attribute_values tbl_attribute_value[]
+
+  @@map("tbl_item_model")
+}
+
+// ตัวเลือกสินค้า / อุปกรณ์เสริม (accessory add-on เช่น SD Card, เซ็นเซอร์วัดน้ำมัน)
+// — คนละอย่างกับ tbl_item_model (โมเดล/รุ่นของตัวสินค้าเอง) ผูกกับสินค้าผ่าน
+// tbl_item.itm_option_code (คอมม่าคั่น) แบบเดียวกับ itm_model_code แต่ใช้ร่วมกัน
+// ได้หลายสินค้าพร้อมกัน (ไม่ต้องแย่งเจ้าของเหมือนโมเดล) และไม่ถูกนำเข้าหน้าเปรียบเทียบ
+model tbl_item_option {
+  id                     Int       @default(autoincrement())
+  itm_option_code        String    @id @db.VarChar(50)
+  itm_option_desc        String?   @db.VarChar(100)
+  itm_option_flag        String?   @db.VarChar(2)
+  itm_option_addon_price Float?
+  ist_dt                 DateTime?
+  mdf_dt                 DateTime?
+  rm_dt                  DateTime?
+  qty                    Int?      @default(0)
+
+  @@map("tbl_item_option")
+}
+
+model tbl_attribute {
+  attribute_code Int     @id @default(autoincrement())
+  attribute_name String  @db.VarChar(100)
+  flag           String? @db.VarChar(2)
+  ist_dt         DateTime?
+  mdf_dt         DateTime?
+  rm_dt          DateTime?
+
+  values tbl_attribute_value[]
+
+  @@map("tbl_attribute")
+}
+
+model tbl_attribute_value {
+  id             Int     @id @default(autoincrement())
+  itm_code       String  @db.VarChar(50)
+  attribute_code Int
+  value          String  @db.VarChar(255)
+  flag           String? @db.VarChar(2)
+  ist_dt         DateTime?
+  mdf_dt         DateTime?
+  rm_dt          DateTime?
+  model_code     String? @db.VarChar(50)
+
+  item      tbl_item        @relation(fields: [itm_code], references: [itm_code])
+  attribute tbl_attribute   @relation(fields: [attribute_code], references: [attribute_code])
+  model     tbl_item_model? @relation(fields: [model_code], references: [itm_model_code], onDelete: Cascade)
+
+  @@map("tbl_attribute_value")
+}
+
+model tbl_footer {
+  id         Int       @id @default(autoincrement())
+  title      String?   @db.VarChar(255)
+  type       String?   @default("\"text\"") @db.VarChar(25)
+  url        String?   @db.VarChar(255)
+  image      String?   @db.VarChar(255)
+  created_at DateTime?
+  updated_at DateTime?
+  deleted_at DateTime?
+  head_title String?   @db.VarChar(255)
+  name       String?   @db.VarChar(255)
+  sequence   Int?
+  flag       String    @default("1") @db.VarChar(2)
+  sub_type   String?   @db.VarChar(50)
+
+  @@map("tbl_footer")
+}
+
+model tbl_articles {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique @db.VarChar(25)
+  title         String?   @db.VarChar(250)
+  sub_title     String?   @db.VarChar(250)
+  description   String?
+  tags          String?   @db.VarChar(250)
+  seo_title     String?   @db.VarChar(250)
+  seo_desc      String?   @db.VarChar(500)
+  thumbnail     String?   @db.VarChar(250)
+  flag          String?   @default("1") @db.VarChar(2)
+  publish_date  DateTime?
+  end_date      DateTime?
+  created_at    DateTime?
+  updated_at    DateTime?
+  deleted_at    DateTime?
+  view          Int?      @default(0)
+  slug          String    @db.VarChar(250)
+  canonical_url String?   @db.VarChar(255)
+
+  @@map("tbl_articles")
+}
+
+model tbl_shop {
+  id            Int       @id @default(autoincrement())
+  shop_id       String    @unique @db.VarChar(50)
+  shop_name     String?   @db.VarChar(100)
+  address       String?   @db.VarChar(255)
+  road          String?   @db.VarChar(250)
+  province      String?   @db.VarChar(100)
+  district      String?   @db.VarChar(100)
+  sub_district  String?   @db.VarChar(100)
+  postcode      String?   @db.VarChar(5)
+  lat           String?   @db.VarChar(50)
+  lon           String?   @db.VarChar(50)
+  tel           String?   @db.VarChar(50)
+  thumbnail     String?   @db.VarChar(250)
+  slug          String?   @db.VarChar(250)
+  canonical_url String?   @db.VarChar(255)
+  flag          String?   @default("1") @db.VarChar(1)
+  ist_dt        DateTime?
+  mdf_dt        DateTime?
+  rm_dt         DateTime?
+
+  @@map("tbl_shop")
+}
+
+model tbl_bnn_slide {
+  bnn_slide_code        String    @id @db.VarChar(50)
+  bnn_slide_index       Int?      @default(1)
+  bnn_slide_desc        String?   @db.VarChar(100)
+  bnn_slide_information String?   @db.VarChar(200)
+  bnn_slide_flag        String?   @default("1") @db.VarChar(2)
+  bnn_slide_end_point   String?   @db.VarChar(200)
+  bnn_slide_tooltip     String?   @db.VarChar(200)
+  bnn_image_master      String?   @db.VarChar(200)
+  bnn_slide_seo         String?   @db.VarChar(255)
+  ist_dt                DateTime?
+  mdf_dt                DateTime?
+  rm_dt                 DateTime?
+  pb_dt                 DateTime?
+  exp_dt                DateTime?
+
+  @@map("tbl_bnn_slide")
+}
+
+model tbl_promotion {
+  id             Int       @id @default(autoincrement())
+  p_code         String    @unique @db.VarChar(50)
+  p_name         String?   @db.VarChar(250)
+  p_slug         String?   @db.VarChar(250)
+  p_desc         String?
+  thumbnail      String?   @db.VarChar(250)
+  thumbnail_rtg  String?   @db.VarChar(100)
+  p_flag         String?   @default("1") @db.Char(1)
+  publish_date   DateTime?
+  end_date       DateTime?
+  ist_dt         DateTime?
+  mdf_dt         DateTime?
+  rm_dt          DateTime?
+  discount_mode  String?   @default("price") @db.VarChar(50)
+  discount_value Int?      @default(0)
+  sort_by        String?   @default("1") @db.VarChar(25)
+  url_end_point  String?   @db.VarChar(250)
+  canonical_url  String?   @db.VarChar(255)
+
+  @@map("tbl_promotion")
+}
+
+model tbl_page {
+  page_code      String    @id @db.VarChar(50)
+  page_desc      String?   @db.VarChar(100)
+  page_flag      String?   @default("1") @db.VarChar(2)
+  page_title     String?   @db.VarChar(255)
+  page_meta_desc String?   @db.VarChar(255)
+  ist_dt         DateTime? @db.Timestamptz
+  mdf_dt         DateTime? @db.Timestamptz
+  rm_dt          DateTime? @db.Timestamptz
+  page_header1   String?   @db.VarChar(255)
+  view           Int?      @default(0)
+  banner_master  String?   @db.VarChar(250)
+  flag_header    String?   @default("1") @db.VarChar(2)
+  canonical_url  String?   @db.VarChar(255)
+
+  @@map("tbl_page")
+}
+
+// Activity log, restored from the production dump (39k+ rows of real
+// dtcshops.com traffic up to 2026-08-03). Modeled here 2026-09-08 so this
+// project's own dashboard can read it AND append to it.
+//
+// Local-copy-only changes made to this table (production has none of these):
+// a primary key on `id`, a sequence + DEFAULT nextval() for it, DEFAULT
+// now() on created_at, and an index on (type, created_at) — the dump ships
+// the table with no PK and no default at all, so inserts were impossible
+// without supplying an id by hand.
+//
+// `page` is a free-form bucket, not an FK: production writes 'pge-XXXXXXX'
+// (a tbl_page code), 'product-single', 'article-single' or 'all' into it.
+model tbl_logs {
+  id         Int       @id @default(autoincrement())
+  user_id    String?   @db.VarChar(25)
+  message    String?   @db.VarChar(250)
+  created_at DateTime? @default(now())
+  type       String?   @db.VarChar(50)
+  page       String?   @db.VarChar(100)
+
+  @@index([type, created_at])
+  @@map("tbl_logs")
+}

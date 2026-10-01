@@ -1,0 +1,14 @@
+# Production image ของหน้าเว็บ: build เป็นไฟล์ static แล้วให้ nginx เสิร์ฟ
+# nginx ทำหน้าที่แทน Vite proxy ของตอน dev — ส่ง /api และ /uploads ต่อไปที่ backend
+# หน้าเว็บจึงยังเรียก /api แบบ relative ได้เหมือนเดิม ไม่ต้องแก้โค้ด (ดู docs/deployment.md)
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

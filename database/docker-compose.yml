@@ -1,0 +1,58 @@
+version: '3.9'
+name: product-compare-app
+
+services:
+  # ===== PostgreSQL Database =====
+  db:
+    image: postgres:16-alpine
+    container_name: product_compare_db
+    env_file:
+      - ./.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== Backend API =====
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: product_compare_api
+    env_file:
+      - ../backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres123@db:5432/product_compare
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+      - .:/database:ro
+      - ./uploads:/database/uploads
+
+  # ===== Frontend =====
+  frontend:
+    build: ../frontend
+    container_name: product_compare_web
+    environment:
+      VITE_PROXY_TARGET: http://backend:4000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:

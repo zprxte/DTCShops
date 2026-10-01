@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Noto Sans Thai', 'Noto Sans JP', 'Sarabun', system-ui, sans-serif;
+}
+
+/* Height of the sticky public header (PublicLayout.vue), used by ComparePage.vue
+   to offset its own sticky table header so the two don't gap/overlap. This
+   fallback is a best-guess for the very first paint before PublicLayout's
+   ResizeObserver measures the real height and overwrites it. */
+:root {
+  --sticky-header-h: 61px;
+}
+
+/* Compare page "Save as PDF" (window.print()) — the page chrome itself is
+   hidden per-element via Tailwind's print:hidden; this just keeps table
+   rows from splitting across a page break. */
+@media print {
+  tr {
+    break-inside: avoid;
+  }
+}

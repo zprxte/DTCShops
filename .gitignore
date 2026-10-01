@@ -1,0 +1,37 @@
+# ===== ห้ามขึ้น repo =====
+# ค่าลับ — ใช้ .env.example ของแต่ละโฟลเดอร์เป็นแบบ
+.env
+!.env.example
+# dump โครงสร้าง DB ของระบบจริง dtcshops.com
+database/dtcshops_db.sql
+*.dump
+*.backup
+# รูปที่แอดมินอัปโหลด / ดาวน์โหลดมาตอนนำเข้า Excel — เป็นข้อมูล ไม่ใช่โค้ด (37 MB+)
+# ย้ายเครื่องให้คัดลอกโฟลเดอร์นี้แยก (docs/deployment.md)
+database/uploads/
+
+# ===== ไฟล์ที่สร้างใหม่ได้ =====
+node_modules/
+dist/
+coverage/
+*.log
+npm-debug.log*
+e2e/e2e-failure.png
+
+# ===== เครื่องมือ / OS =====
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+# ไฟล์ตั้งค่าเครื่องมือในเครื่อง — ไม่เกี่ยวกับตัวระบบ
+.claude/
+CLAUDE.md
+.agents/
+skills-lock.json
+# mobile/ มี .gitignore ของ Flutter เอง (build/, .dart_tool/ ฯลฯ)
+*.tsbuildinfo
+# ไฟล์ล็อกที่ Word สร้างตอนเปิดเอกสารค้างไว้
+~$*
+# ภาพหน้าจอจากการทดสอบ
+frontend/scroll-after.png

@@ -1,0 +1,57 @@
+# Production — ต่างจาก docker-compose.yml (dev) ตรงที่:
+#   - backend รัน `npm start` (node ธรรมดา) ไม่ใช่ nodemon และไม่ mount โค้ดจากเครื่อง
+#   - frontend เป็นไฟล์ build แล้วเสิร์ฟด้วย nginx ที่พอร์ต 80 (แทน Vite dev server :5173)
+#   - DB ไม่เปิดพอร์ต 5432 ออกนอกเครื่อง
+#   - ทุก service restart เองเมื่อเครื่องรีบูต
+# รัน:  docker compose -f docker-compose.prod.yml up -d --build
+# รายละเอียด / สิ่งที่ต้องตั้งก่อน → docs/deployment.md
+name: product-compare-app-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["npm", "start"]
+    env_file:
+      - ../backend/.env
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+      # ประกอบจาก database/.env (compose อ่านไฟล์ .env ข้างไฟล์นี้ให้เอง) รหัสผ่านจึงอยู่ที่เดียว
+      # ทับค่า DATABASE_URL ใน backend/.env · รหัสผ่านที่มี @ : / # ต้อง URL-encode
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # รูปสินค้าที่อัปโหลด — ต้องอยู่นอก container ไม่งั้น build ใหม่แล้วรูปหาย
+      - ./uploads:/database/uploads
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
