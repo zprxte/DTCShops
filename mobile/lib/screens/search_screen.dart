@@ -126,11 +126,23 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     final query = _controller.text.trim();
-    if (_suggestions.isNotEmpty) return _suggestionList(query);
 
-    // ประวัติต้องมาก่อนข้อความชวนกด Enter ไม่งั้นพอมีคำค้างในช่อง
-    // (เช่นเปิดจากหน้าผลการค้นหา) จะไม่เห็นประวัติเลย
-    if (_history.isNotEmpty) return _historyList(hintFor: query);
+    // ช่องว่าง → ประวัติการค้นหาทั้งหมด (แบบ YouTube ตอนเพิ่งแตะช่องค้นหา)
+    if (query.isEmpty) {
+      if (_history.isNotEmpty) return _historyList();
+      return _centered(
+        icon: LucideIcons.search,
+        title: langs('searchPlaceholder'),
+        detail: langs('searchExample'),
+      );
+    }
+
+    // กำลังพิมพ์ → ประวัติที่ตรงกับคำค้นขึ้นก่อน ตามด้วยคำแนะนำจาก API
+    // (เปิดจากหน้าผลการค้นหา คำเดิมในช่องก็อยู่ในประวัติ จึงยังเห็นประวัติ)
+    final matched = _matchingHistory(query);
+    if (matched.isNotEmpty || _suggestions.isNotEmpty) {
+      return _suggestionList(query, matched);
+    }
 
     if (query.length >= 2) {
       return _centered(
@@ -147,41 +159,54 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  /// ประวัติที่มีคำค้นอยู่ข้างใน — ขึ้นต้นด้วยคำค้นมาก่อน ตามด้วยที่อยู่กลางคำ
+  /// จำกัด 3 คำ ไม่งั้นประวัติดันคำแนะนำสินค้าตกจอ
+  /// อยู่ในเครื่องอยู่แล้ว จึงโผล่ทันทีที่พิมพ์ ไม่ต้องรอ debounce
+  List<String> _matchingHistory(String query) {
+    final q = query.toLowerCase();
+    final starts = <String>[];
+    final contains = <String>[];
+    for (final word in _history) {
+      final w = word.toLowerCase();
+      if (w.startsWith(q)) {
+        starts.add(word);
+      } else if (w.contains(q)) {
+        contains.add(word);
+      }
+    }
+    return [...starts, ...contains].take(3).toList();
+  }
+
+  Future<void> _removeHistory(String word) async {
+    final items = await SearchHistory.instance.remove(word);
+    if (mounted) setState(() => _history = items);
+  }
+
+  /// แถวประวัติ 1 คำ: นาฬิกา, คำค้น (ส่วนที่ตรงเป็นตัวหนา), ✕ ลบออก
+  /// กดแถว = ค้นคำนั้นซ้ำทันที
+  Widget _historyRow(String word, {String query = ''}) {
+    return _SuggestionRow(
+      icon: LucideIcons.history,
+      name: word,
+      query: query,
+      maxLines: 1,
+      onTap: () {
+        _controller.text = word;
+        _search(word);
+      },
+      trailing: IconButton(
+        onPressed: () => _removeHistory(word),
+        tooltip: langs('searchRemoveOne'),
+        icon: const Icon(LucideIcons.x, size: 16, color: AppColors.muted),
+      ),
+    );
+  }
+
   /// ค้นหาล่าสุด — เก็บในเครื่อง 10 คำล่าสุด กดคำเดิมแล้วค้นซ้ำได้ทันที
-  Widget _historyList({String hintFor = ''}) {
+  Widget _historyList() {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        // พิมพ์ไว้แล้วแต่ยังไม่มีคำแนะนำ — บอกทางออกไว้เหนือประวัติ
-        if (hintFor.length >= 2)
-          InkWell(
-            onTap: () => _search(hintFor),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 52),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      langs('searchFor', {'query': hintFor}),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.brand700,
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    LucideIcons.chevronRight,
-                    size: 20,
-                    color: AppColors.brand700,
-                  ),
-                ],
-              ),
-            ),
-          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
           child: Row(
@@ -202,108 +227,27 @@ class _SearchScreenState extends State<SearchScreen> {
             ],
           ),
         ),
-        ..._history.map(
-          (word) => InkWell(
-            onTap: () {
-              _controller.text = word;
-              _search(word);
-            },
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 52),
-              padding: const EdgeInsets.only(left: 16, right: 4),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppColors.surface)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    LucideIcons.history,
-                    size: 18,
-                    color: AppColors.muted,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      word,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.navy900,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () async {
-                      final items = await SearchHistory.instance.remove(word);
-                      if (mounted) setState(() => _history = items);
-                    },
-                    tooltip: langs('searchRemoveOne'),
-                    icon: const Icon(
-                      LucideIcons.x,
-                      size: 16,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        ..._history.map((word) => _historyRow(word)),
       ],
     );
   }
 
-  /// รายการคำแนะนำระหว่างพิมพ์ + แถวปิดท้ายไปยังผลการค้นหาทั้งหมด
-  Widget _suggestionList(String query) {
+  /// ระหว่างพิมพ์ — ประวัติที่ตรง (นาฬิกา) → คำแนะนำสินค้า (แว่นขยาย)
+  /// รวมในรายการเดียวแบบ YouTube · ค้นทั้งคำ = กด Enter บนแป้นพิมพ์
+  Widget _suggestionList(String query, List<String> matched) {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-          child: Text(
-            langs('searchSuggestions'),
-            style: const TextStyle(fontSize: 12, color: AppColors.muted),
-          ),
-        ),
+        ...matched.map((word) => _historyRow(word, query: query)),
         ..._suggestions.map(
           (s) => _SuggestionRow(
+            icon: LucideIcons.search,
             name: s.productName,
             query: query,
             // กดคำแนะนำ = เข้าหน้าสินค้านั้นเลย ไม่ต้องค้นซ้ำ
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProductDetailScreen(productId: s.productId),
-              ),
-            ),
-          ),
-        ),
-        InkWell(
-          onTap: () => _search(query),
-          child: SizedBox(
-            height: 52,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      langs('searchSeeAllOf', {'query': query}),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.brand700,
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    LucideIcons.chevronRight,
-                    size: 20,
-                    color: AppColors.brand700,
-                  ),
-                ],
               ),
             ),
           ),
@@ -433,17 +377,26 @@ class _SearchHeader extends StatelessWidget {
   }
 }
 
-/// แถวคำแนะนำสูง 52 — ไอคอนแว่นขยาย, ชื่อสินค้า (ส่วนที่ตรงกับคำค้นเป็นตัวหนา), ›
+/// แถวรายการสูง 52 — ใช้ทั้งประวัติ (นาฬิกา + ✕) และคำแนะนำสินค้า (แว่นขยาย)
+/// ส่วนที่ตรงกับคำค้นเป็นตัวหนา
 class _SuggestionRow extends StatelessWidget {
   const _SuggestionRow({
+    required this.icon,
     required this.name,
     required this.query,
     required this.onTap,
+    this.trailing,
+    this.maxLines = 2,
   });
 
+  final IconData icon;
   final String name;
   final String query;
   final VoidCallback onTap;
+
+  /// ไม่ส่ง = ไม่มีอะไรท้ายแถว
+  final Widget? trailing;
+  final int maxLines;
 
   /// ทำตัวหนาเฉพาะช่วงที่ตรงกับคำค้น (ไม่สนตัวพิมพ์เล็ก/ใหญ่)
   /// ช่วยให้ผู้ใช้เห็นว่าทำไมรายการนี้ถึงขึ้นมา
@@ -470,31 +423,31 @@ class _SuggestionRow extends StatelessWidget {
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(minHeight: 52),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        // ปุ่ม ✕ มีระยะกดในตัวแล้ว จึงลดขอบขวา
+        padding: EdgeInsets.only(left: 16, right: trailing == null ? 16 : 4),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.surface)),
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.search, size: 18, color: AppColors.muted),
+            Icon(icon, size: 18, color: AppColors.muted),
             const SizedBox(width: 12),
             Expanded(
-              child: Text.rich(
-                TextSpan(children: _spans()),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.35,
-                  color: AppColors.navy900,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text.rich(
+                  TextSpan(children: _spans()),
+                  maxLines: maxLines,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.35,
+                    color: AppColors.navy900,
+                  ),
                 ),
               ),
             ),
-            const Icon(
-              LucideIcons.chevronRight,
-              size: 20,
-              color: AppColors.muted,
-            ),
+            ?trailing,
           ],
         ),
       ),
