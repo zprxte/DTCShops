@@ -802,6 +802,43 @@ watch(filterPanelEl, (el) => {
 })
 watch(featuresOpen, () => nextTick(handleStickyScroll))
 
+// ความกว้างคอลัมน์จอมือถือ/แท็บเล็ตคิดจากความกว้างจริงของกรอบตาราง ไม่ใช้ 100vw
+// เบราว์เซอร์ในแอป LINE บน iPhone ให้ค่า 100vw ไม่ตรงกับจอ ช่องสินค้าเลยกว้างเกินจนเห็นทีละช่อง
+// คลาส calc(100vw …) บน <th> ยังอยู่เป็นค่าตั้งต้นก่อนวัดได้ · จอ lg ขึ้นไปใช้ 220px ตามคลาสเหมือนเดิม
+const tableWrapperWidth = ref(0)
+let wrapperResizeObserver: ResizeObserver | null = null
+watch(tableWrapperEl, (el) => {
+  wrapperResizeObserver?.disconnect()
+  if (el) {
+    wrapperResizeObserver = new ResizeObserver(() => { tableWrapperWidth.value = el.clientWidth })
+    wrapperResizeObserver.observe(el)
+    tableWrapperWidth.value = el.clientWidth
+  }
+})
+// กรอบตาราง = จอ − 34px (ขอบหน้า + เส้นกรอบ ตัวเลขเดียวกับในคลาส) จึงใช้แทนความกว้างจอตอนเทียบจุดตัด sm / lg
+const slotWidthStyle = computed(() => {
+  const width = tableWrapperWidth.value
+  if (!width || width + 34 >= 1024) return undefined
+  const visibleColumns = width + 34 < 640 ? 2 : compareStore.capacity
+  return { width: `${width / visibleColumns}px` }
+})
+const rowLabelWidthStyle = computed(() => (tableWrapperWidth.value ? { width: `${tableWrapperWidth.value}px` } : undefined))
+// ตั้งความกว้างทั้งตารางเองด้วย — ใน LINE บน iPhone ย่อขนาดตาราง (4 → 3/2) แล้วตาราง table-layout: fixed
+// ไม่คำนวณความกว้างคอลัมน์ใหม่ ค้างหน้าตาเดิม (ขยายขนาดไม่เป็น) · คู่กับ :key ที่สร้างตารางใหม่ทุกครั้งที่เปลี่ยนขนาด
+const tableWidthStyle = computed(() => {
+  const width = tableWrapperWidth.value
+  if (!width || width + 34 >= 1024) return undefined
+  const visibleColumns = width + 34 < 640 ? 2 : compareStore.capacity
+  const slots = sortedColumns.value.length + emptySlotCount.value
+  return { width: `${(width / visibleColumns) * slots}px` }
+})
+watch(() => compareStore.capacity, () => nextTick(() => {
+  const wrapper = tableWrapperEl.value
+  if (!wrapper) return
+  wrapper.scrollLeft = Math.min(wrapper.scrollLeft, Math.max(0, wrapper.scrollWidth - wrapper.clientWidth))
+  syncCloneColumnWidths()
+}))
+
 //คอยติดตามความกว้างตารางที่เปลี่ยนไป (เช่น รูปโหลดเสร็จ) แล้ว sync หัวตารางจำลองให้ตรงกัน
 let tableResizeObserver: ResizeObserver | null = null
 watch(tableEl, (el) => {
@@ -829,6 +866,7 @@ onBeforeUnmount(() => {
   tableWrapperEl.value?.removeEventListener('scroll', handleStickyScroll)
   tableResizeObserver?.disconnect()
   filterResizeObserver?.disconnect()
+  wrapperResizeObserver?.disconnect()
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
   // เผื่อผู้ใช้เปลี่ยนหน้าไปตอนป็อปอัปยังเปิดอยู่ — watch จะไม่ถูกเรียกอีกแล้ว
   window.removeEventListener('keydown', handlePickerKeydown)
@@ -1267,7 +1305,7 @@ onBeforeUnmount(() => {
         <div ref="sentinelEl"></div>
         <!-- มือถือ: คอลัมน์สินค้ากว้างครึ่งจอ เห็นทีละ 2 ชิ้น ตาราง 3–4 ช่องเลื่อนแล้วหยุดตรงคอลัมน์พอดี -->
         <div ref="tableWrapperEl" class="overflow-x-auto max-lg:snap-x max-lg:snap-mandatory" :style="{ '--compare-cols': compareStore.capacity }">
-        <table ref="tableEl" class="w-full border-separate border-spacing-0" style="table-layout: fixed">
+        <table ref="tableEl" :key="`cols-${compareStore.capacity}`" class="w-full border-separate border-spacing-0" :style="[{ tableLayout: 'fixed' }, tableWidthStyle]">
           <thead>
             <tr>
               <th class="sticky left-0 z-20 w-40 max-lg:hidden bg-gray-50 border-b border-r border-gray-200 px-4 pb-4 text-left align-bottom">
@@ -1280,6 +1318,7 @@ onBeforeUnmount(() => {
                 v-for="(column, index) in sortedColumns"
                 :key="column.key"
                 class="bg-gray-50 border-b border-r border-gray-200 p-3 lg:p-4 text-left font-normal align-top w-[220px] max-sm:w-[calc((100vw_-_34px)/2)] sm:max-lg:w-[calc((100vw_-_34px)/var(--compare-cols))] max-lg:snap-start"
+                :style="slotWidthStyle"
               >
                 <div class="relative">
                   <router-link :to="`/product/${productSlug(column.product)}`" class="block rounded-lg bg-white overflow-hidden hover:opacity-90 transition-opacity">
@@ -1346,7 +1385,7 @@ onBeforeUnmount(() => {
                 </div>
               </th>
               <!-- ช่องว่างเปล่าที่ยังเพิ่มสินค้าได้ — โชว์ครบทุกช่องที่เหลือตามขนาดตารางที่เลือกไว้ -->
-              <th v-for="n in emptySlotCount" :key="`add-${n}`" class="bg-gray-50 border-b border-gray-200 p-3 lg:p-4 align-middle w-[220px] max-sm:w-[calc((100vw_-_34px)/2)] sm:max-lg:w-[calc((100vw_-_34px)/var(--compare-cols))] max-lg:snap-start">
+              <th v-for="n in emptySlotCount" :key="`add-${n}`" class="bg-gray-50 border-b border-gray-200 p-3 lg:p-4 align-middle w-[220px] max-sm:w-[calc((100vw_-_34px)/2)] sm:max-lg:w-[calc((100vw_-_34px)/var(--compare-cols))] max-lg:snap-start" :style="slotWidthStyle">
                 <button
                   type="button"
                   @click="openPicker('add')"
@@ -1366,7 +1405,7 @@ onBeforeUnmount(() => {
             <template v-if="!onlyShowDifferences || categoryDiffers">
               <tr class="lg:hidden">
                 <td :colspan="totalColumnCount - 1" class="bg-white p-0">
-                  <div class="sticky left-0 w-[calc(100vw_-_34px)] flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-6 pb-1 text-lg font-bold leading-snug text-navy-900">
+                  <div class="sticky left-0 w-[calc(100vw_-_34px)] flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-6 pb-1 text-lg font-bold leading-snug text-navy-900" :style="rowLabelWidthStyle">
                     {{ langs('colCategory') }}
                     <span :class="['inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', categoryDiffers ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-600']">
                       {{ categoryDiffers ? langs('diffBadgeDifferent') : langs('diffBadgeSame') }}
@@ -1391,7 +1430,7 @@ onBeforeUnmount(() => {
             <template v-for="name in attributeNames" :key="name">
               <tr v-show="!onlyShowDifferences || attributeDiffers.get(name)" class="lg:hidden">
                 <td :colspan="totalColumnCount - 1" class="bg-white p-0">
-                  <div class="sticky left-0 w-[calc(100vw_-_34px)] flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-6 pb-1 text-lg font-bold leading-snug text-navy-900">
+                  <div class="sticky left-0 w-[calc(100vw_-_34px)] flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-6 pb-1 text-lg font-bold leading-snug text-navy-900" :style="rowLabelWidthStyle">
                     {{ name }}
                     <span :class="['inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', attributeDiffers.get(name) ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-600']">
                       {{ attributeDiffers.get(name) ? langs('diffBadgeDifferent') : langs('diffBadgeSame') }}

@@ -1,0 +1,20 @@
+{
+  "name": "dtc-line-richmenu",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node check.js",
+    "bot": "node bot.js",
+    "render": "node render-menu.js",
+    "setup": "node setup-richmenu.js",
+    "remove": "node setup-richmenu.js --remove",
+    "install-browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "cloudflared": "^0.7.3",
+    "playwright": "^1.63.0"
+  }
+}

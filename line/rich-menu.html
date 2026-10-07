@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rich Menu DTC GPS & IoT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* layout: phone mockup (left) + button reference (right); rich menu colours copied from the real OA */
+  :root {
+    --bg: #eef3f8;
+    --panel: #ffffff;
+    --text: #1d2733;
+    --muted: #5b6878;
+    --line: #dde3ea;
+    --code-bg: #eef3f8;
+    --hl: #dcefff;
+    /* rich menu (เหมือนกันทั้งสองธีม — เป็นรูปภาพในของจริง) */
+    --rm-dark: #45a6e6;
+    --rm-light: #b4dcf6;
+    --rm-dark-text: #ffffff;
+    --rm-light-text: #2479bf;
+    --rm-tab-on: #1f6fb2;
+    --rm-tab-off: #e4f2fc;
+    --rm-gap: #9ccdef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d; --panel: #18212b; --text: #e6edf3; --muted: #9aa8b6; --line: #2a3644;
+      --code-bg: #0f151c; --hl: #17324a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161d; --panel: #18212b; --text: #e6edf3; --muted: #9aa8b6; --line: #2a3644;
+    --code-bg: #0f151c; --hl: #17324a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Noto Sans Thai", system-ui, sans-serif; line-height: 1.55;
+  }
+  .wrap {
+    max-width: 1100px; margin: 0 auto; padding: 32px 16px 48px;
+    display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 40px; align-items: start;
+  }
+  @media (max-width: 880px) { .wrap { grid-template-columns: minmax(0, 1fr); justify-items: center; } .side { width: 100%; } }
+
+  /* ---------- phone (LINE dark mode เหมือนภาพจริง) ---------- */
+  .phone { width: 360px; max-width: 100%; border-radius: 38px; background: #0b0b0c; padding: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.28); }
+  .screen { position: relative; border-radius: 30px; overflow: hidden; background: #1c1d21; display: flex; flex-direction: column; height: 780px; color: #fff; }
+  .status { display: flex; justify-content: space-between; padding: 12px 22px 0; font-size: 13px; font-weight: 600; background: #2b2c30; }
+  .lhead { background: #2b2c30; display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px; }
+  .lhead .back { font-size: 24px; line-height: 1; opacity: .9; }
+  .lhead .name { flex: 1; min-width: 0; }
+  .lhead .name b { display: flex; align-items: center; gap: 6px; font-size: 16px; }
+  .lhead .name small { display: block; color: #ff5a5a; font-size: 10px; line-height: 1.2; }
+  .shield { width: 14px; height: 16px; flex: none; }
+  .lhead .icons { display: flex; gap: 14px; opacity: .9; }
+  .lhead .icons svg { width: 20px; height: 20px; }
+  .chat {
+    flex: 1; padding: 12px 12px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; position: relative;
+    background: radial-gradient(120% 80% at 80% 60%, #3b3f4d 0%, #23252c 55%, #1a1b20 100%);
+  }
+  .bubble { background: #2e2f33; border-radius: 18px; padding: 9px 13px; font-size: 12.5px; max-width: 86%; line-height: 1.5; }
+  .bubble a { color: #6ea8ff; text-decoration: underline; word-break: break-all; }
+  .bubble.me { align-self: flex-end; background: #06c755; flex: none; }
+  .bubble { flex: none; }
+  .chat { overflow-y: auto; scrollbar-width: none; }
+  .chat::-webkit-scrollbar { display: none; }
+  .row { display: flex; gap: 6px; align-items: flex-end; flex: none; }
+  .row .ava { width: 26px; height: 26px; border-radius: 50%; background: #fff; flex: none; display: grid; place-items: center; }
+  .row .ava img { width: 20px; }
+  .row .bubble { max-width: 78%; }
+  .carousel { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -12px; padding: 0 12px 4px 44px; scroll-padding-left: 44px; scrollbar-width: none; flex: none; }
+  .carousel::-webkit-scrollbar { display: none; }
+  .fcard { flex: none; width: 200px; background: #fff; color: #1d2733; border-radius: 14px; overflow: hidden; scroll-snap-align: start; display: flex; flex-direction: column; }
+  .fcard .pic { height: 112px; background: #f3f6f9; display: grid; place-items: center; }
+  .fcard .pic img { max-height: 104px; max-width: 92%; object-fit: contain; }
+  .fcard .body { padding: 8px 10px 4px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .fcard .cat { font-size: 10px; color: #2479bf; font-weight: 600; }
+  .fcard .nm { font-size: 12px; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
+  .fcard .pr { font-size: 15px; font-weight: 800; color: #d6402a; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .fbtns { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px 10px; }
+  .fbtn { border: 0; font: inherit; font-size: 12px; font-weight: 700; border-radius: 8px; padding: 6px; cursor: pointer; }
+  .fbtn.pri { background: #06a648; color: #fff; }
+  .fbtn.sec { background: #eef2f6; color: #1f6fb2; }
+  .fbtn:focus-visible { outline: 2px solid #2479bf; outline-offset: 1px; }
+  .spec { width: 250px; background: #fff; color: #1d2733; border-radius: 14px; overflow: hidden; flex: none; }
+  .spec .hd { display: flex; gap: 8px; align-items: center; padding: 10px; background: #e9f4fd; }
+  .spec .hd img { width: 48px; height: 48px; object-fit: contain; background: #fff; border-radius: 8px; flex: none; }
+  .spec .hd b { font-size: 11.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .spec .ttl { font-size: 11px; font-weight: 700; color: #1f6fb2; padding: 8px 10px 2px; }
+  .spec dl { margin: 0; padding: 0 10px; font-size: 10.5px; }
+  .spec dl div { display: grid; grid-template-columns: 42% 1fr; gap: 6px; padding: 4px 0; border-bottom: 1px solid #eef1f4; }
+  .spec dt { color: #5f6b78; }
+  .spec dd { margin: 0; font-weight: 600; word-break: break-word; }
+  .spec .more { font-size: 10.5px; color: #5f6b78; padding: 6px 10px 0; }
+  .quick { display: flex; gap: 6px; overflow-x: auto; padding: 6px 10px; background: #1c1d21; scrollbar-width: none; flex: none; }
+  .quick[hidden] { display: none; }
+  .quick::-webkit-scrollbar { display: none; }
+  .quick button { flex: none; border: 1px solid #06c755; background: #fff; color: #058a3c; font: inherit; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+  .toast {
+    position: absolute; left: 50%; top: 96px; z-index: 5; transform: translateX(-50%);
+    background: rgba(255,255,255,.92); color: #1d2733; font-size: 11.5px; font-weight: 500;
+    padding: 6px 12px; border-radius: 12px; opacity: 0; transition: opacity .2s; text-align: center; width: max-content; max-width: 92%;
+  }
+  .toast.show { opacity: 1; }
+  .chatbar { background: #111214; display: flex; align-items: center; height: 46px; }
+  .chatbar .kb { width: 48px; display: grid; place-items: center; color: #9aa0a8; }
+  .chatbar .kb svg { width: 22px; height: 22px; }
+  .chatbar button { flex: 1; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #b9bec6; cursor: pointer; height: 100%; }
+
+  /* ---------- rich menu: ภาพ 2500 x 1686 ---------- */
+  .rich { aspect-ratio: 2500 / 1686; width: 100%; max-width: 100%; display: flex; flex-direction: column; user-select: none; background: var(--rm-gap); }
+  .rich[hidden] { display: none; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; height: 14%; flex: none; }
+  .tab {
+    border: 0; font: inherit; font-weight: 800; font-size: 12.5px; cursor: pointer;
+    background: var(--rm-tab-off); color: var(--rm-light-text);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .tab.on { background: var(--rm-tab-on); color: #fff; }
+  .tab .new { background: #ff4757; color: #fff; font-size: 9px; padding: 1px 6px; border-radius: 999px; font-weight: 700; }
+  .grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; }
+  .grid[hidden] { display: none; }
+  .cell {
+    border: 0; font: inherit; cursor: pointer; padding: 4px 3px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 11px; font-weight: 800; line-height: 1.2; text-align: center; transition: filter .12s;
+  }
+  .cell:hover, .cell:focus-visible { filter: brightness(1.06) saturate(1.1); outline: none; }
+  .cell:focus-visible { box-shadow: inset 0 0 0 3px #fff; }
+  .d { background: var(--rm-dark); color: var(--rm-dark-text); }
+  .l { background: var(--rm-light); color: var(--rm-light-text); }
+  .cell svg { width: 34px; height: 34px; }
+  .cell .shops { display: flex; gap: 3px; margin-bottom: 2px; }
+  .cell .shops img { width: 22px; height: 22px; border-radius: 6px; }
+  .cell .fb { width: 34px; height: 34px; border-radius: 50%; background: #1877f2; display: grid; place-items: center; color: #fff; font: 800 24px/1 Arial, sans-serif; }
+
+  /* ---------- side panel ---------- */
+  .side { min-width: 0; }
+  h1 { font-size: 24px; margin: 0 0 4px; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .pill.new { background: #ffe3e6; color: #b3132b; }
+  .pill.real { background: #dff5e6; color: #166534; }
+  .pill.chg { background: #fff1d6; color: #8a5a00; }
+  .tbl { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; white-space: nowrap; }
+  td code, li code { font-size: 11.5px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  tr.hl td { background: var(--hl); }
+  ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  li { margin: 4px 0; }
+  .note { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== Phone ===== -->
+  <div class="phone" aria-label="ภาพจำลองหน้าแชต LINE">
+    <div class="screen">
+      <div class="status"><span>10:38</span><span>5G ▮</span></div>
+      <div class="lhead">
+        <span class="back">‹</span>
+        <div class="name">
+          <b><svg class="shield" viewBox="0 0 14 16"><path d="M7 0 14 2.5V8c0 4-3 6.8-7 8-4-1.2-7-4-7-8V2.5z" fill="#5aa6ff"/><path d="m4 8 2 2 4-4" stroke="#fff" stroke-width="1.6" fill="none"/></svg>DTC GPS &amp; IoT</b>
+          <small>ผู้รับผิดชอบเป็นผู้ตอบกลับ</small>
+        </div>
+        <div class="icons">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.5-4.5"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </div>
+      </div>
+      <div class="chat" id="chat">
+        <div class="bubble">ช่องทางการติดต่อ D.T.C. Enterprise Public Company Limited<br>
+          Website : <a>http://www.dtc.co.th</a><br>
+          Fanpage : <a>https://www.facebook.com/DTCGPSIoT</a><br>
+          Tel : Call Center 1176 ตลอด 24 ชม.<br>
+          E-mail : <a>info@dtc.co.th</a></div>
+        <div class="bubble">กด 1 เพื่อแจ้งยอดชำระค่าบริการ<br>กด 2 เพื่อดูข้อมูลผลิตภัณฑ์<br>กด 3 เพื่อสอบถามสินค้า และขอใบเสนอราคา<br>กด 4 เพื่อแจ้งซ่อม และสอบถามการใช้งาน<br>กด 5 สอบถามเรื่องอื่นๆ</div>
+        <span id="end"></span>
+      </div>
+      <div class="toast" id="toast"></div>
+
+      <div class="quick" id="quick" hidden></div>
+      <div class="rich" id="rich">
+        <div class="tabs" role="tablist">
+          <button class="tab on" role="tab" data-tab="gps" aria-selected="true">DTC GPS &amp; IoT</button>
+          <button class="tab" role="tab" data-tab="shop" aria-selected="false">DTC SHOPS</button>
+        </div>
+
+        <!-- แท็บ 1: เมนูเดิมของจริง (ชื่อปุ่ม + สีตามภาพหน้าจอ) -->
+        <div class="grid" data-panel="gps">
+          <button class="cell d" data-name="แจ้งยอดชำระค่าบริการ" data-act="ส่งข้อความ:แจ้งยอดชำระค่าบริการ">
+            <svg viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8l6 3h10a3 3 0 0 1 0 6H17"/><path d="M4 9v10"/><circle cx="29" cy="29" r="6" fill="#58b368" stroke="#2f8a43"/><path d="M29 26v6M27 27.5h3a1 1 0 0 1 0 2h-2a1 1 0 0 0 0 2h3" stroke="#fff" stroke-width="1.6"/></svg>
+            แจ้งยอด<br>ชำระค่าบริการ
+          </button>
+          <button class="cell l" data-name="ดูข้อมูลผลิตภัณฑ์" data-act="สลับแท็บ:DTC SHOPS" data-switch="shop">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="17" y="14" width="14" height="11" rx="1.5" fill="#fff" stroke="#9fb3c4" stroke-width="1.6"/><path d="M31 18h4l3 4v3h-7z" fill="#fff" stroke="#9fb3c4" stroke-width="1.6"/><circle cx="21" cy="27" r="2.6" fill="#fff" stroke="#6b7b8a" stroke-width="1.6"/><circle cx="34" cy="27" r="2.6" fill="#fff" stroke="#6b7b8a" stroke-width="1.6"/><circle cx="12" cy="13" r="7" fill="#e9f6ff" stroke="#6b7b8a" stroke-width="1.8"/><path d="M12 9.5v7M8.5 13h7" stroke="#2479bf" stroke-width="2"/><path d="m7 18-5 5" stroke="#8a4b2a" stroke-width="3.2"/></svg>
+            ดูข้อมูลผลิตภัณฑ์
+          </button>
+          <button class="cell d" data-name="สอบถามสินค้าและขอใบเสนอราคา" data-act="ส่งข้อความ:สอบถามสินค้า">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="4" width="22" height="30" rx="1.5" fill="#fff" stroke="#c9d3dc" stroke-width="1.4"/><path d="M13 11h14M13 15h14M13 19h14M13 23h10M13 27h12" stroke="#9aa6b2" stroke-width="1.3"/><path d="m27 8-8 18" stroke="#7a3b2a" stroke-width="2.6"/></svg>
+            สอบถามสินค้า<br>และขอใบเสนอราคา
+          </button>
+          <button class="cell l" data-name="ติดตามรถยนต์" data-act="ลิงก์:https://www.dtc.co.th (ชั่วคราว รอลิงก์ระบบติดตามรถจริง)">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linejoin="round"><path d="M8 7h22l3 3v22H8z" fill="#45a6e6"/><path d="M8 9h20v22H8z" fill="#fff"/><path d="M18 14a5 5 0 0 1 5 5c0 4-5 9-5 9s-5-5-5-9a5 5 0 0 1 5-5z" fill="#3ba55c"/><circle cx="18" cy="19" r="1.8" fill="#fff"/></svg>
+            ติดตามรถยนต์
+          </button>
+          <button class="cell d" data-name="สอบถามเรื่องอื่นๆ" data-act="ส่งข้อความ:สอบถามเรื่องอื่นๆ">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10a4 4 0 0 1 4-4h20a4 4 0 0 1 4 4v13a4 4 0 0 1-4 4H17l-7 6v-6a4 4 0 0 1-4-4z" fill="#fff"/><circle cx="14" cy="16.5" r="1.8" fill="#45a6e6"/><circle cx="20" cy="16.5" r="1.8" fill="#45a6e6"/><circle cx="26" cy="16.5" r="1.8" fill="#45a6e6"/><path d="M33 3l1 2.4L36.5 6 34 7l-1 2.5L32 7l-2.5-1L32 5.4z" fill="#ffe066"/></svg>
+            สอบถามเรื่องอื่นๆ
+          </button>
+          <button class="cell l" data-name="เพจ DTCGPSIoT" data-act="ลิงก์:https://www.facebook.com/DTCGPSIoT">
+            <span class="fb">f</span>
+            เพจ DTCGPSIoT
+          </button>
+        </div>
+
+        <!-- แท็บ 2: DTC SHOPS (ใหม่ — ต่อกับระบบค้นหา/เปรียบเทียบของเรา) -->
+        <div class="grid" data-panel="shop" hidden>
+          <button class="cell d" data-name="ค้นหาสินค้า" data-flow="search" data-act="ส่งข้อความ:ค้นหาสินค้า → บอทให้พิมพ์ชื่อสินค้า แล้วตอบเป็นการ์ดสินค้า (พิมพ์ผิดก็หาเจอ)">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linecap="round"><circle cx="17" cy="17" r="10" fill="#e9f6ff" stroke="#fff" stroke-width="3"/><path d="m25 25 9 9" stroke="#fff" stroke-width="4"/><path d="M12.5 17h9M17 12.5v9" stroke="#45a6e6" stroke-width="2.4"/></svg>
+            ค้นหาสินค้า
+          </button>
+          <button class="cell l" data-name="เปรียบเทียบสินค้า" data-act="ส่งข้อความ:เปรียบเทียบสินค้า → บอทตอบลิงก์หน้าเปรียบเทียบ">
+            <svg viewBox="0 0 40 40" fill="none" stroke-linejoin="round"><rect x="5" y="7" width="13" height="26" rx="2" fill="#fff" stroke="#2479bf" stroke-width="2"/><rect x="22" y="7" width="13" height="26" rx="2" fill="#fff" stroke="#2479bf" stroke-width="2"/><path d="M8 13h7M8 18h7M8 23h5M25 13h7M25 18h7M25 23h5" stroke="#9aa6b2" stroke-width="1.6" stroke-linecap="round"/><path d="m27 28 2 2 3.5-3.5" stroke="#3ba55c" stroke-width="2" stroke-linecap="round"/></svg>
+            เปรียบเทียบสินค้า
+          </button>
+          <button class="cell d" data-name="สินค้าแนะนำ" data-flow="popular" data-act="ส่งข้อความ:สินค้าแนะนำ → บอทตอบการ์ดสินค้ายอดนิยม 6 อันดับ (ปัดได้)">
+            <svg viewBox="0 0 40 40"><path d="M20 4l4.9 10 11 1.6-8 7.8 1.9 11L20 29.2 10.2 34.4l1.9-11-8-7.8 11-1.6z" fill="#ffd54a" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+            สินค้าแนะนำ
+          </button>
+          <button class="cell l" data-name="หมวดหมู่สินค้า" data-flow="category" data-act="ส่งข้อความ:หมวดหมู่สินค้า → บอทตอบปุ่มเลือกหมวด แล้วตอบการ์ดสินค้าในหมวดนั้น">
+            <svg viewBox="0 0 40 40" stroke-linejoin="round"><rect x="5" y="5" width="13" height="13" rx="3" fill="#45a6e6"/><rect x="22" y="5" width="13" height="13" rx="3" fill="#fff" stroke="#45a6e6" stroke-width="2"/><rect x="5" y="22" width="13" height="13" rx="3" fill="#fff" stroke="#45a6e6" stroke-width="2"/><rect x="22" y="22" width="13" height="13" rx="3" fill="#45a6e6"/></svg>
+            หมวดหมู่สินค้า
+          </button>
+          <button class="cell d" data-name="สาขา DTC Shop" data-act="ส่งข้อความ:สาขา DTC Shop → บอทตอบรายการสาขาพร้อมปุ่มโทร / แผนที่">
+            <svg viewBox="0 0 40 40" stroke-linejoin="round"><path d="M5 15 9 6h22l4 9z" fill="#fff"/><path d="M5 15h30v2a4 4 0 0 1-7.5 2 4 4 0 0 1-7.5 0 4 4 0 0 1-7.5 0A4 4 0 0 1 5 17z" fill="#ff8a65"/><path d="M8 21v13h24V21" fill="#fff"/><rect x="16" y="25" width="8" height="9" fill="#45a6e6"/></svg>
+            สาขา DTC Shop
+          </button>
+          <button class="cell l" data-name="สั่งซื้อออนไลน์" data-act="ส่งข้อความ:สั่งซื้อออนไลน์ → บอทตอบปุ่ม Shopee / Lazada / TikTok">
+            <span class="shops">
+              <img src="../frontend/public/shopee-icon.png" alt="">
+              <img src="../frontend/public/lazada-icon.png" alt="">
+              <img src="../frontend/public/tiktok-icon.png" alt="">
+            </span>
+            สั่งซื้อออนไลน์
+          </button>
+        </div>
+      </div>
+
+      <div class="chatbar">
+        <span class="kb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M6 9h1M10 9h1M14 9h1M18 9h0M6 12h1M10 12h1M14 12h1M18 12h0M8 15.5h8" stroke-linecap="round"/></svg></span>
+        <button id="toggle" aria-expanded="true">เมนู ▾</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Explanation ===== -->
+  <div class="side">
+    <h1>Rich Menu แบบมีแท็บ</h1>
+    <p class="sub">ภาพจำลองเมนู LINE OA “DTC GPS &amp; IoT” ที่เพิ่มแท็บ DTC SHOPS · แท็บแรกยังเป็นเมนูเดิม แค่ย่อลงเพื่อเว้นที่ให้แถบแท็บ · กดแท็บเพื่อสลับ กดปุ่มเพื่อดูว่าทำอะไร</p>
+
+    <div class="card">
+      <h2>แท็บ DTC GPS &amp; IoT <span class="pill real">เมนูเดิม</span></h2>
+      <p class="note">ปุ่มทั้ง 6 ตามเมนูจริง · ปุ่มส่งข้อความเป็นชื่อปุ่มแทนเลข “1 / 3 / 5” เดิม · “ดูข้อมูลผลิตภัณฑ์” เปลี่ยนเป็นปุ่มเปิดแท็บ DTC SHOPS</p>
+      <div class="tbl"><table id="t-gps"><thead><tr><th>ปุ่ม</th><th>เมื่อกด</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>แท็บ DTC SHOPS <span class="pill new">ใหม่</span></h2>
+      <p class="note">ปุ่มแบบ “ลิงก์” เปิดเว็บค้นหาและเปรียบเทียบสินค้าของเรา ส่วนปุ่ม “ส่งข้อความ” ต้องมีบอทคอยตอบ</p>
+      <div class="tbl"><table id="t-shop"><thead><tr><th>ปุ่ม</th><th>เมื่อกด</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>กดสินค้าแล้วเด้งคุณสมบัติ <span class="pill new">ลองกดได้</span></h2>
+      <p class="note">ในแท็บ DTC SHOPS ลองกด “สินค้าแนะนำ” “ค้นหาสินค้า” หรือ “หมวดหมู่สินค้า” แล้วกด “ดูคุณสมบัติ” บนการ์ด · สินค้าและสเปคเป็นข้อมูลจริงจากระบบ (ยอดเข้าชมสูงสุด 6 อันดับ)</p>
+      <ul>
+        <li>การ์ดสินค้าแบบปัดได้คือ <b>Flex Message</b> แบบ carousel (สูงสุด 12 ใบต่อข้อความ)</li>
+        <li>ปุ่ม “ดูคุณสมบัติ” เป็น action <code>postback</code> ส่ง <code>spec=itm-…</code> ไปให้ backend แล้ว backend ตอบเป็นการ์ดสเปค ข้อมูลมาจาก <code>tbl_attribute_value</code> แหล่งเดียวกับหน้าเว็บ</li>
+        <li>การ์ดสเปคแสดง 8 หัวข้อแรก ที่เหลือให้กด “ดูบนเว็บ” เพราะการ์ด LINE ขยายเองไม่ได้</li>
+        <li>ปุ่มเลือกคำหรือเลือกหมวดใต้แชตคือ <b>Quick Reply</b> กดแล้วหายไปเอง</li>
+        <li>ค้นหาจริงใช้ <code>/api/search</code> ตัวเดิม พิมพ์ผิดหรือลืมสลับแป้นก็หาเจอเหมือนในเว็บ</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>ต่างจากเมนูเดิมตรงไหน <span class="pill chg">ต้องตกลงกับทีม</span></h2>
+      <ul>
+        <li>เพิ่มแถบแท็บสูงประมาณ 14% ไว้บนสุด ปุ่มเดิมจึงเตี้ยลง แต่ภาพยังเป็น 2500 × 1686 px เท่าเดิม</li>
+        <li>รูปปุ่มเดิมต้องให้ทีมกราฟิกจัดวางใหม่ (ในภาพจำลองนี้ใช้ไอคอนวาดแทนรูปจริง)</li>
+        <li>ไม่มีปุ่ม “แจ้งซ่อม” (กด 4) ในเมนูเดิมอยู่แล้ว ผมจึงไม่ได้เพิ่ม</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>ถ้าจะทำจริง</h2>
+      <ul>
+        <li>ทำรูป 2 ภาพ ขนาด 2500 × 1686 px (ภาพละแท็บ) และวาดแถบแท็บไว้บนสุดของทั้งสองภาพ</li>
+        <li>สร้าง rich menu 2 ชุดผ่าน Messaging API แล้วตั้ง alias <code>tab-gps</code> / <code>tab-shop</code></li>
+        <li>ตั้งพื้นที่กดของแท็บ (และปุ่ม “ดูข้อมูลผลิตภัณฑ์”) เป็น action <code>richmenuswitch</code></li>
+        <li>⚠️ เมนูที่ตั้งผ่าน API จะแสดงแทนเมนูที่ตั้งไว้ใน LINE OA Manager ต้องให้ผู้ดูแล OA อนุญาตก่อน</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.grid');
+  const toast = document.getElementById('toast');
+  let timer;
+
+  function show(tab) {
+    tabs.forEach(t => {
+      const on = t.dataset.tab === tab;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', on);
+    });
+    panels.forEach(p => { p.hidden = p.dataset.panel !== tab; });
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.tab)));
+
+  function flash(text) {
+    toast.textContent = text;
+    toast.classList.add('show');
+    clearTimeout(timer);
+    timer = setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+
+  // ตารางคำอธิบายสร้างจากปุ่มจริง ชี้ปุ่มแล้วไฮไลต์แถว
+  for (const panel of panels) {
+    const body = document.querySelector('#t-' + panel.dataset.panel + ' tbody');
+    panel.querySelectorAll('.cell').forEach(cell => {
+      const [kind, ...rest] = cell.dataset.act.split(':');
+      const value = rest.join(':');
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td><b></b></td><td></td>';
+      tr.cells[0].firstChild.textContent = cell.dataset.name;
+      tr.cells[1].append(kind + ' ');
+      const code = document.createElement('code');
+      code.textContent = value;
+      tr.cells[1].append(code);
+      body.appendChild(tr);
+      cell.addEventListener('click', () => {
+        if (cell.dataset.switch) show(cell.dataset.switch);
+        flash(kind === 'ส่งข้อความ' ? `ส่งข้อความ “${value.split(' →')[0]}”` + (value.includes('→') ? ' → ' + value.split('→').slice(1).join('→').trim() : '') : `${kind}: ${value}`);
+      });
+      cell.addEventListener('mouseenter', () => tr.classList.add('hl'));
+      cell.addEventListener('mouseleave', () => tr.classList.remove('hl'));
+    });
+  }
+
+  // ===== แชตจำลอง: การ์ดสินค้า + การ์ดคุณสมบัติ (ข้อมูลจริงจากระบบ) =====
+  const PRODUCTS = [{"id":"itm-0000001","name":"Hikvision กล้องติดรถยนต์ Dash Cam N6Pro กล้องติดกระจกมองหลัง คมชัดระดับ 2K มีกล้องหลัง รับประกัน 1 ปี ฟรีบริการติดตั้ง","price":5190,"image":"../database/uploads/products/2024-12/1734645424962-370723623.png","slug":"car-camera-n6","category":"กล้องติดรถยนต์","specs":[{"k":"ความละเอียดกล้อง","v":"กล้องหน้า 1440P (2560 x 1440), กล้องหลัง 1080P (1920 x 1080)"},{"k":"ความละเอียดวิดีโอสูงสุด","v":"2K@30fps"},{"k":"มุมเลนส์สูงสุด","v":"กล้องหน้า แนวนอน 105°, แนวทแยงมุม 123°, กล้องหลัง แนวนอน 102°, แนวทแยงมุม 124°"},{"k":"รูรับแสง","v":"F1.6"},{"k":"OSD overlay","v":"แสดงวันที่ เวลา และเนื้อหาอื่นๆ ที่บันทึกไว้"},{"k":"จอแสดงผล","v":"หน้าจอ IPS สัมผัสได้ ขนาด 9.35 นิ้ว (1280X320)"},{"k":"รูปแบบรูปภาพ","v":"การเข้ารหัส JPG"},{"k":"ช่องการ์ดความจำ","v":"รองรับสูงสุด 128GB"},{"k":"Module","v":"Wi-Fi"},{"k":"เซ็นเซอร์","v":"G-sensor, GPS"},{"k":"อินเทอร์เฟซ","v":"รองรับเครื่องชาร์จในรถยนต์และสายเคเบิลแบบสเต็ปดาวน์"},{"k":"อินพุตเสียง","v":"ไมโครโฟนในตัว"},{"k":"เอาต์พุตเสียง","v":"ลำโพงในตัว"},{"k":"ระบบ AI ความปลอดภัย","v":"\"แจ้งเตือนไฟจราจรเปลี่ยนเป็นสีเขียว\" \"แจ้งเตือนการจำกัดความเร็ว\", \"แจ้งเตือนรถด้านหน้าออกตัว\""}]},{"id":"itm-0000017","name":"DTC DTRACK + DLT สำหรับติดรถบรรทุกเชิงพาณิชย์ GPS Tracking ฟรีค่า Airtime 1 ปี ติดตั้งฟรีที่ DTC Shop ทุกสาขา","price":5990,"image":"../database/uploads/products/2025-01/1736136105163-41658440.jpg","slug":"gps-dtrack-dlt","category":"GPS Tracking","specs":[{"k":"Battery Cell","v":"180 mA / 3.7V Li-Polymer (industrial grade)"},{"k":"แบตเตอรี่สำรอง","v":"30 นาที (0.5 ชั่วโมง)"},{"k":"GNSS Satellite","v":"GPS, GLONASS, GALILEO, BEIDOU, AGPS, QZSS, SBAS"},{"k":"แรงดันไฟฟ้าใช้งาน","v":"9 - 90 VDC"},{"k":"กำลังไฟฟ้า","v":"at 12V < 3.5 mA (Online Sleep), at 12V < 3.0 mA (Normal)"},{"k":"อุณหภูมิในการทำงาน","v":"-20 °C ~ +75 °C"},{"k":"ขนาดตัวเครื่อง (กว้าง x ยาว x สูง)","v":"W43 x L86 x H15 mm"},{"k":"Frequency Band","v":"4G"},{"k":"Positioning Precision","v":"< 2.0 mCEP"},{"k":"น้ำหนักตัวเครื่อง","v":"70 g"},{"k":"มาตรฐานกันน้ำกันฝุ่น","v":"IP54"}]},{"id":"itm-0000015","name":"Hikvision Dash Cam K5 กล้องติดรถยนต์ ความละเอียด 2K คมชัดในที่มืด ติดตั้งฟรี!!!","price":3190,"image":"../database/uploads/products/2024-12/1735188766384-553625807.jpg","slug":"hikvision-dash-card-k5","category":"กล้องติดรถยนต์","specs":[{"k":"ความละเอียดวิดีโอสูงสุด","v":"2K@30fps"},{"k":"มุมเลนส์สูงสุด","v":"แนวนอน 123°, แนวทแยงมุม 105°"},{"k":"OSD overlay","v":"แสดงวันที่ เวลา และเนื้อหาอื่นๆ ที่บันทึกไว้"},{"k":"จอแสดงผล","v":"หน้าจอสัมผัส IPS ขนาด 3 นิ้ว (640X480)"},{"k":"รูปแบบรูปภาพ","v":"การเข้ารหัส JPG"},{"k":"ช่องการ์ดความจำ","v":"รองรับสูงสุด 256GB"},{"k":"Module","v":"Wi-Fi"},{"k":"เซ็นเซอร์","v":"G-sensor"},{"k":"อินเทอร์เฟซ","v":"รองรับเครื่องชาร์จในรถยนต์และสายเคเบิลแบบสเต็ปดาวน์"},{"k":"อินพุตเสียง","v":"ไมโครโฟนในตัว"},{"k":"เอาต์พุตเสียง","v":"ลำโพงในตัว"},{"k":"ความละเอียดกล้อง","v":"กล้องหน้า 1440P (2560 x 1440)"}]},{"id":"itm-0000018","name":"DTC DTRACK-M สำหรับติดรถมอเตอร์ไซค์ GPS Tracking ฟรีค่า Airtime 1 ปี ติดตั้งฟรีที่ DTC Shop ทุกสาขา","price":4790,"image":"../database/uploads/products/2025-01/1736136399979-47406631.jpg","slug":"gps-dtrck-m","category":"GPS Tracking","specs":[{"k":"GNSS Satellite","v":"GPS + BD"},{"k":"แบตเตอรี่สำรอง","v":"30 นาที (0.5 ชั่วโมง)"},{"k":"Battery Cell","v":"55 mA"},{"k":"น้ำหนักตัวเครื่อง","v":"40 g"},{"k":"Positioning Precision","v":"< 10 mCEP"},{"k":"Frequency Band","v":"4G"},{"k":"ขนาดตัวเครื่อง (กว้าง x ยาว x สูง)","v":"W38 x L85 x H24 mm"},{"k":"อุณหภูมิในการทำงาน","v":"-25 °C ~ +75 °C"},{"k":"มาตรฐานกันน้ำกันฝุ่น","v":"IP67"},{"k":"แรงดันไฟฟ้าใช้งาน","v":"9 - 90 VDC"}]},{"id":"itm-0000016","name":"DTC DTRACK-O สำหรับติดรถยนต์ GPS Tracking ฟรีค่า Airtime 1 ปี ติดตั้งฟรีที่ DTC Shop ทุกสาขา","price":3990,"image":"../database/uploads/products/2024-12/1736135532221-381296835.jpg","slug":"gps-dtrack-o","category":"GPS Tracking","specs":[{"k":"น้ำหนักตัวเครื่อง","v":"35 g (±10 g)"},{"k":"Positioning Precision","v":"< 10 m"},{"k":"Frequency Band","v":"4G"},{"k":"ขนาดตัวเครื่อง (กว้าง x ยาว x สูง)","v":"W39 x L45 x H22 mm"},{"k":"อุณหภูมิในการทำงาน","v":"-25 °C ~ +75 °C"},{"k":"แรงดันไฟฟ้าใช้งาน","v":"DC 9V-36V"},{"k":"GNSS Satellite","v":"GPS, BEIDOU"},{"k":"ชนิดซิมการ์ด","v":"Micro-SIM"},{"k":"แบตเตอรี่สำรอง","v":"30 นาที (0.5 ชั่วโมง)"},{"k":"Battery Cell","v":"55 mAh"}]},{"id":"itm-0000002","name":"DTC กล้องติดหน้ารถ full HD รุ่นD10 รับประกัน 1 ปี พร้อมเมมโมรี่ 64GB มี WiFi ในตัว กล้องติดรถยนต์","price":1199,"image":"../database/uploads/products/2024-12/1734645479524-473565175.png","slug":"car-camera-d10","category":"กล้องติดรถยนต์","specs":[{"k":"ความละเอียดกล้อง","v":"1080P (1920X1080)"},{"k":"ความละเอียดวิดีโอสูงสุด","v":"1080P@30fps"},{"k":"มุมเลนส์สูงสุด","v":"140°"},{"k":"เลนส์","v":"CG2083"},{"k":"หน่วยประมวลผล","v":"GP1167"},{"k":"ช่องการ์ดความจำ","v":"รองรับสูงสุด 64GB (Class 10)"},{"k":"การบันทึกวิดีโอ","v":"Loop Recording บันทึกแบบวนซ้ำ"},{"k":"Module","v":"Wi-Fi"},{"k":"อินพุตเสียง","v":"ไมโครโฟนในตัว (บันทึกเสียงสนทนาได้)"},{"k":"รองรับแอปพลิเคชัน","v":"iOS, Android"},{"k":"ประเภทการติดตั้ง","v":"ติดตั้งด้วยสติกเกอร์ 3M"},{"k":"ขนาดตัวเครื่อง (กว้าง x ยาว x สูง)","v":"2 x 9.5 x 3.5 cm (ด้านเลนส์สูง 3 cm, แผ่นยึดกว้าง 4 cm)"}]}];
+  const chat = document.getElementById('chat');
+  const end = document.getElementById('end');
+  const quick = document.getElementById('quick');
+  const ICON = '../frontend/public/DTC_icon.png';
+  const fmt = n => n > 0 ? '฿' + Number(n).toLocaleString('th-TH') : 'ติดต่อสอบถาม';
+  const short = n => n.length > 34 ? n.slice(0, 34) + '…' : n;
+  const later = fn => setTimeout(fn, 350);
+
+  // การ์ดที่สูงกว่าช่องแชตให้เลื่อนไปที่หัวการ์ด ไม่งั้นเห็นแต่ท้ายการ์ด
+  function scrollDown(node) {
+    requestAnimationFrame(() => {
+      const tall = node && node.offsetHeight > chat.clientHeight - 16;
+      chat.scrollTo({ top: tall ? node.offsetTop - chat.offsetTop - 8 : chat.scrollHeight, behavior: 'smooth' });
+    });
+  }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function put(node) { chat.insertBefore(node, end); scrollDown(node); }
+  function userSays(text) { put(el('div', 'bubble me', text)); }
+  function botSays(node) {
+    const row = el('div', 'row');
+    const ava = el('span', 'ava'); const im = el('img'); im.src = ICON; im.alt = ''; ava.append(im);
+    row.append(ava, node);
+    put(row);
+  }
+  function botText(text) { botSays(el('div', 'bubble', text)); }
+  function setQuick(items, onPick) {
+    quick.replaceChildren();
+    quick.hidden = !items;
+    for (const it of items || []) {
+      const b = el('button', null, it);
+      b.addEventListener('click', () => { setQuick(null); onPick(it); });
+      quick.append(b);
+    }
+  }
+
+  function carousel(list) {
+    const wrap = el('div', 'carousel');
+    for (const p of list) {
+      const c = el('div', 'fcard');
+      const pic = el('div', 'pic'); const im = el('img'); im.src = p.image; im.alt = ''; pic.append(im);
+      const body = el('div', 'body');
+      body.append(el('span', 'cat', p.category), el('span', 'nm', p.name), el('span', 'pr', fmt(p.price)));
+      const btns = el('div', 'fbtns');
+      const spec = el('button', 'fbtn pri', 'ดูคุณสมบัติ');
+      spec.addEventListener('click', () => showSpec(p));
+      const web = el('button', 'fbtn sec', 'ดูบนเว็บ');
+      web.addEventListener('click', () => flash('ลิงก์: /product/' + p.slug));
+      btns.append(spec, web);
+      c.append(pic, body, btns);
+      wrap.append(c);
+    }
+    put(wrap);
+  }
+
+  function showSpec(p) {
+    userSays('ดูคุณสมบัติ ' + short(p.name));
+    const box = el('div', 'spec');
+    const hd = el('div', 'hd'); const im = el('img'); im.src = p.image; im.alt = '';
+    hd.append(im, el('b', null, p.name));
+    const dl = el('dl');
+    for (const sp of p.specs.slice(0, 8)) {
+      const r = el('div'); r.append(el('dt', null, sp.k), el('dd', null, sp.v)); dl.append(r);
+    }
+    box.append(hd, el('div', 'ttl', 'คุณสมบัติ · ' + fmt(p.price)), dl);
+    if (p.specs.length > 8) box.append(el('div', 'more', 'อีก ' + (p.specs.length - 8) + ' หัวข้อ ดูได้บนเว็บ'));
+    const btns = el('div', 'fbtns');
+    const web = el('button', 'fbtn pri', 'ดูคุณสมบัติทั้งหมดบนเว็บ');
+    web.addEventListener('click', () => flash('ลิงก์: /product/' + p.slug));
+    const cmp = el('button', 'fbtn sec', 'เพิ่มเข้าเปรียบเทียบ');
+    cmp.addEventListener('click', () => flash('ลิงก์: /compare?ids=' + p.id));
+    btns.append(web, cmp);
+    box.append(btns);
+    later(() => botSays(box));
+  }
+
+  const SEARCH_WORDS = {
+    'กล้องติดรถยนต์': p => p.category === 'กล้องติดรถยนต์',
+    'GPS ติดตามรถ': p => p.category === 'GPS Tracking',
+    'hikvison (พิมพ์ผิด)': p => /hikvision/i.test(p.name),
+    'DTRACK': p => /dtrack/i.test(p.name),
+  };
+  const flows = {
+    popular() {
+      userSays('สินค้าแนะนำ');
+      later(() => { botText('สินค้ายอดนิยม 6 อันดับครับ ปัดดูได้เลย กด “ดูคุณสมบัติ” เพื่อดูสเปค'); carousel(PRODUCTS); });
+    },
+    search() {
+      userSays('ค้นหาสินค้า');
+      later(() => {
+        botText('พิมพ์ชื่อสินค้า รุ่น หรือคุณสมบัติที่ต้องการได้เลยครับ (หรือเลือกด้านล่าง)');
+        setQuick(Object.keys(SEARCH_WORDS), w => {
+          const typo = w.includes('พิมพ์ผิด');
+          userSays(w.replace(' (พิมพ์ผิด)', ''));
+          const hit = PRODUCTS.filter(SEARCH_WORDS[w]);
+          later(() => {
+            botText(typo ? 'แสดงผลของ “hikvision” ครับ (' + hit.length + ' รายการ)' : 'พบ ' + hit.length + ' รายการครับ');
+            carousel(hit);
+          });
+        });
+      });
+    },
+    category() {
+      userSays('หมวดหมู่สินค้า');
+      const cats = [...new Set(PRODUCTS.map(p => p.category))];
+      later(() => {
+        botText('เลือกหมวดหมู่ที่สนใจได้เลยครับ');
+        setQuick(cats, c => { userSays(c); later(() => carousel(PRODUCTS.filter(p => p.category === c))); });
+      });
+    },
+  };
+  document.querySelectorAll('[data-flow]').forEach(c => c.addEventListener('click', e => {
+    e.stopImmediatePropagation(); setQuick(null); flows[c.dataset.flow]();
+  }, true));
+
+  const rich = document.getElementById('rich');
+  const toggle = document.getElementById('toggle');
+  toggle.addEventListener('click', () => {
+    rich.hidden = !rich.hidden;
+    toggle.textContent = rich.hidden ? 'เมนู ▴' : 'เมนู ▾';
+    toggle.setAttribute('aria-expanded', !rich.hidden);
+  });
+</script>
+
+</body>
+</html>

@@ -2,8 +2,6 @@ const Fuse = require('fuse.js')
 const { cleanText, safeUrl } = require('./sanitize')
 
 // คอลัมน์ในไฟล์ (ลำดับนี้คือลำดับในเทมเพลตด้วย) — หัวคอลัมน์ในไฟล์คือ key ภาษาอังกฤษ
-// ตามแบบเทมเพลตที่ผู้ใช้ส่งมา (25 ก.ย. 2026) · label ภาษาไทยใช้ในหน้าพรีวิวและยังรับเป็นหัวคอลัมน์ได้
-// (ไฟล์ที่ดาวน์โหลดไปก่อนเปลี่ยนหัวยังอัปโหลดได้) · example ใส่เป็นโน้ตบนหัวคอลัมน์
 const PRODUCT_COLUMNS = [
   { key: 'product_id', label: 'รหัสสินค้า', width: 14, example: 'itm-0000003 (เว้นว่าง = สินค้าใหม่)' },
   { key: 'sku', label: 'SKU', width: 14, example: 'PROD-001' },
@@ -32,7 +30,7 @@ const FIELD_LABELS = Object.fromEntries(PRODUCT_COLUMNS.map((c) => [c.key, c.lab
 const LOCAL_IMAGE = /^\/uploads\/[^?#]+$/
 const isRemoteImage = (value) => /^https?:\/\//i.test(String(value ?? ''))
 const LINK_FIELDS = ['shopee_link', 'lazada_link', 'tiktok_link', 'line_link']
-const MAX_VALUE_LENGTH = 255 // tbl_attribute_value.value เป็น varchar(255)
+const MAX_VALUE_LENGTH = 255
 
 // เทียบชื่อแบบไม่สนตัวพิมพ์และช่องว่างซ้ำ — "Wi-Fi  " กับ "wi-fi" ถือเป็นหัวข้อเดียวกัน
 function normName(text) {
@@ -55,11 +53,7 @@ function normalizeTags(text) {
     .join(', ')
 }
 
-/**
- * ตรวจแถวชีต "สินค้า" ทีละแถว
- * snapshot.products: Map<itm_code, { product_id, product_name, sku, category_id,
- *   product_price, stock_quantity, tags, shopee_link, …, description, is_active }>
- */
+// ตรวจแถวชีต "สินค้า" ทีละแถว
 function planProducts(rows, snapshot) {
   const categoriesByName = new Map()
   for (const c of snapshot.categories) {

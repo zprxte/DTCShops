@@ -53,5 +53,21 @@ services:
     depends_on:
       - backend
 
+  # บอท LINE OA (ไม่บังคับ) — เปิดเฉพาะเมื่อสั่ง --profile line
+  # LINE เรียก https://<โดเมน>/line/webhook → nginx (frontend) → service นี้ · ไม่ต้องใช้ tunnel
+  line:
+    profiles: ["line"]
+    build:
+      context: ../line
+    restart: unless-stopped
+    env_file:
+      - ../line/.env
+    environment:
+      # เรียก backend ในเครือข่ายของ compose (ทับค่าใน line/.env)
+      API_ORIGIN: http://backend:4000
+      BOT_PORT: "4100"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

@@ -4,24 +4,26 @@ export interface HighlightSegment {
 }
 
 export function highlightSegments(text: string, query: string): HighlightSegment[] {
-  const q = query.trim()
-  if (!q) return [{ text, match: false }]
+  const terms = [...new Set(query.trim().split(/\s+/).filter(Boolean))]
+  if (!terms.length) return [{ text, match: false }]
 
-  const lowerText = text.toLowerCase()
-  const lowerQuery = q.toLowerCase()
+  // Match each search term wherever it appears, preferring longer terms at
+  // the same position. Escape input so model names such as "C++" stay literal.
+  const pattern = terms
+    .sort((a, b) => b.length - a.length)
+    .map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+  const matches = new RegExp(pattern, 'giu')
   const segments: HighlightSegment[] = []
   let cursor = 0
 
-  while (cursor < text.length) {
-    const idx = lowerText.indexOf(lowerQuery, cursor)
-    if (idx === -1) {
-      segments.push({ text: text.slice(cursor), match: false })
-      break
-    }
+  for (const match of text.matchAll(matches)) {
+    const idx = match.index
     if (idx > cursor) segments.push({ text: text.slice(cursor, idx), match: false })
-    segments.push({ text: text.slice(idx, idx + q.length), match: true })
-    cursor = idx + q.length
+    segments.push({ text: match[0], match: true })
+    cursor = idx + match[0].length
   }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), match: false })
 
   return segments.length ? segments : [{ text, match: false }]
 }
