@@ -44,11 +44,31 @@ function productBubble(p, ctx) {
   return bubble;
 }
 
-export function productCarousel(products, ctx, altText = 'สินค้า') {
+// การ์ดใบสุดท้ายของชุด — กดแล้วบอทส่งชุดถัดไป (carousel มีได้ไม่เกิน 12 ใบ)
+function moreBubble({ remaining, data }) {
   return {
-    type: 'flex', altText,
-    contents: { type: 'carousel', contents: products.slice(0, 12).map((p) => productBubble(p, ctx)) },
+    type: 'bubble', size: 'kilo',
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm', justifyContent: 'center',
+      contents: [
+        { type: 'text', text: 'ดูเพิ่มเติม', size: 'lg', weight: 'bold', align: 'center' },
+        { type: 'text', text: `อีก ${remaining} รายการ`, size: 'sm', color: '#666666', align: 'center' },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', contents: [{
+        type: 'button', style: 'primary', color: '#06A648', height: 'sm',
+        action: { type: 'postback', label: 'ดูชุดถัดไป', data, displayText: 'ดูเพิ่มเติม' },
+      }],
+    },
   };
+}
+
+// more = { remaining, data } → สินค้า 11 ใบ + การ์ด "ดูเพิ่มเติม"
+export function productCarousel(products, ctx, altText = 'สินค้า', more = null) {
+  const bubbles = products.slice(0, more ? 11 : 12).map((p) => productBubble(p, ctx));
+  if (more) bubbles.push(moreBubble(more));
+  return { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } };
 }
 
 export function specBubble(d, ctx) {

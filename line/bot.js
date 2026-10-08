@@ -46,14 +46,25 @@ async function sendProducts(token, products, intro) {
   return reply(token, [text(intro), productCarousel(products, ctx, intro)]);
 }
 
-async function onSearch(token, word) {
-  const r = await api(`/api/search?searchword=${encodeURIComponent(word)}&limit=10`);
+// ผลค้นหาส่งทีละชุด: carousel มีได้ 12 ใบ = สินค้า 11 + การ์ด "ดูเพิ่มเติม" (ชุดสุดท้ายไม่มีการ์ดนี้)
+const SEARCH_PAGE = 11;
+
+async function onSearch(token, word, page = 1) {
+  const r = await api(`/api/search?searchword=${encodeURIComponent(word)}&limit=${SEARCH_PAGE}&page=${page}`);
   if (r.products.length) {
-    const intro = r.searched_as
-      ? `แสดงผลของ “${r.searched_as}” ครับ (${r.total} รายการ)`
-      : `พบ ${r.total} รายการครับ${r.total > 10 ? ' (แสดง 10 อันดับแรก)' : ''}`;
-    return sendProducts(token, r.products, intro);
+    const from = (page - 1) * SEARCH_PAGE + 1;
+    const to = from + r.products.length - 1;
+    const remaining = r.total - to;
+    const data = new URLSearchParams({ more: word, page: String(page + 1) }).toString();
+    const more = remaining > 0 && data.length <= 300 ? { remaining, data } : null; // postback data ยาวได้ 300 ตัว
+    const intro = page > 1
+      ? `แสดงรายการที่ ${from}–${to} จาก ${r.total} ครับ`
+      : r.searched_as
+        ? `แสดงผลของ “${r.searched_as}” ครับ (${r.total} รายการ)`
+        : `พบ ${r.total} รายการ แสดงรายการที่ ${from}–${to} ครับ`;
+    return reply(token, [text(intro), productCarousel(r.products, ctx, intro, more)]);
   }
+  if (page > 1) return reply(token, text('แสดงผลครบแล้วครับ'));
   const sugg = (r.suggestions || []).map((s) => ({ label: s.product_name, data: `spec=${s.product_id}`, text: `ดูคุณสมบัติ ${s.product_name}` }));
   return reply(token, text(
     sugg.length ? `ไม่พบ “${word}” ครับ คุณหมายถึงสินค้าเหล่านี้ไหม?` : `ไม่พบ “${word}” ครับ ลองพิมพ์ชื่อรุ่นหรือคุณสมบัติอื่น`,
@@ -114,6 +125,7 @@ async function onPostback(ev) {
     const d = await api(`/api/products/${encodeURIComponent(data.get('spec'))}`);
     return reply(ev.replyToken, specBubble(d, ctx));
   }
+  if (data.has('more')) return onSearch(ev.replyToken, data.get('more'), Math.max(2, Number(data.get('page')) || 2));
   if (data.has('cat')) {
     const r = await api(`/api/products?category_id=${encodeURIComponent(data.get('cat'))}&sort=popular&limit=10`);
     return sendProducts(ev.replyToken, r.products, `สินค้าในหมวดนี้ ${r.total} รายการครับ`);
@@ -126,7 +138,7 @@ async function handle(ev) {
     else if (ev.type === 'postback') await onPostback(ev);
   } catch (e) {
     console.error('[bot]', ev.type, e.message);
-    if (ev.replyToken) await reply(ev.replyToken, text('ขออภัย ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งครับ')).catch(() => {});
+    if (ev.replyToken) await reply(ev.replyToken, text('ขออภัย ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้งครับ')).catch(() => { });
   }
 }
 
@@ -252,7 +264,7 @@ server.listen(PORT, async () => {
     }
     const ready = await setWebhook(publicUrl);
     if (!WEB) {
-      try { await setupRichMenu({ webBase, log: () => {} }); console.log('ตั้งเมนูใหม่แล้ว: ปุ่มเปรียบเทียบ →', webBase + '/compare'); }
+      try { await setupRichMenu({ webBase, log: () => { } }); console.log('ตั้งเมนูใหม่แล้ว: ปุ่มเปรียบเทียบ →', webBase + '/compare'); }
       catch (e) { console.log('⚠️ ตั้งเมนูใหม่ไม่สำเร็จ:', e.message, '— ปุ่มเปรียบเทียบจะยังชี้ที่เดิม'); }
     }
     if (ready) console.log('พร้อมใช้งาน — กดปุ่มในแท็บ DTC SHOPS ได้เลย (Ctrl+C เพื่อปิด)');
