@@ -5,13 +5,20 @@
 import crypto from 'crypto';
 import { loadLineEnv, envValue, line } from './env.js';
 import { productCarousel, specBubble, shopCarousel, quickReply } from './flex.js';
-import { createSearchState } from './searchState.js';
 
 // ปุ่มในแท็บ DTC GPS & IoT ให้คนตอบ (Chat) — บอทไม่ยุ่ง
 const HUMAN_TOPICS = new Set(['แจ้งยอดชำระค่าบริการ', 'สอบถามสินค้า', 'สอบถามเรื่องอื่นๆ']);
 
-// ผู้ใช้ที่เพิ่งกด "ค้นหาสินค้า" — ข้อความถัดไปถือเป็นคำค้น (หมดอายุ 5 นาที)
-const SEARCH_TTL = 5 * 60 * 1000;
+// ค้นหาแบบไม่ต้องจำสถานะ: ปุ่ม "ค้นหาสินค้า" เปิดแป้นพิมพ์พร้อมเติม "ค้นหา: " ไว้ให้
+// ข้อความที่ขึ้นต้นด้วย "ค้นหา:" (หรือ "ค้นหา " เว้นวรรค) = คำค้น · ข้อความอื่นปล่อยให้เจ้าหน้าที่ตอบ
+// บอทจึงไม่ต้องจำว่าใครเพิ่งกดปุ่ม — ทำงานได้บน Vercel ที่แต่ละคำขออาจได้เครื่องใหม่
+const SEARCH_PREFIX = 'ค้นหา: ';
+const SEARCH_TYPED = /^ค้นหา(?:\s*[:：]|\s)\s*([\s\S]*)$/;
+const searchButton = { label: 'ค้นหาสินค้า', data: 'search', keyboard: SEARCH_PREFIX };
+// ตัวอย่างคำค้น: postback ค้นตรงๆ ไม่ต้องพิมพ์ (ข้อความในแชตแสดงเป็น "ค้นหา: …")
+const example = (label, word = label) => ({ label, data: new URLSearchParams({ more: word, page: '1' }).toString(), text: SEARCH_PREFIX + word });
+const SEARCH_HINT = 'พิมพ์ชื่อสินค้า รุ่น หรือคุณสมบัติต่อจาก “ค้นหา:” แล้วกดส่งได้เลยครับ เช่น ค้นหา: Hikvision (หรือเลือกด้านล่าง)';
+const searchExamples = () => quickReply([example('กล้องติดรถยนต์'), example('GPS ติดตามรถ', 'GPS'), example('DTRACK'), example('Hikvision'), example('กันน้ำ IP67', 'IP67'), searchButton]);
 
 // ผลค้นหาส่งทีละชุด: carousel มีได้ 12 ใบ = สินค้า 11 + การ์ด "ดูเพิ่มเติม" (ชุดสุดท้ายไม่มีการ์ดนี้)
 const SEARCH_PAGE = 11;
@@ -45,7 +52,6 @@ export function validSignature(raw, sig) {
 // เป็นฟังก์ชันเพราะ npm run bot รู้ URL ของ tunnel หลังเปิดเครื่องแล้ว
 export function createBot({ api: apiOrigin, webBase, imageBase }) {
   const API = apiOrigin.replace(/\/$/, '');
-  const awaitingSearch = createSearchState();
 
   const ctx = {
     imageUrl: (p) => (p && imageBase() ? imageBase() + encodeURI(p.startsWith('/') ? p : '/uploads/' + p) : null),
@@ -63,15 +69,14 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     return reply(token, [text(intro), productCarousel(products, ctx, intro)]);
   }
 
-  // ออกจากโหมดค้นหา ข้อความถัดไปไปถึงเจ้าหน้าที่ใน Chat
-  async function handoff(token, user) {
-    await awaitingSearch.delete(user);
+  // คำถามที่บอทตอบไม่ได้ — ข้อความถัดไป (ที่ไม่ขึ้นต้นด้วย "ค้นหา:") ไปถึงเจ้าหน้าที่ใน Chat อยู่แล้ว
+  async function handoff(token) {
     return reply(token, text('ส่งเรื่องให้เจ้าหน้าที่แล้วครับ พิมพ์รายละเอียดเพิ่มได้เลย เจ้าหน้าที่จะตอบในแชตนี้', {
-      quickReply: quickReply([{ label: 'ค้นหาสินค้า' }, { label: 'สินค้าแนะนำ' }, { label: 'หมวดหมู่สินค้า' }]),
+      quickReply: quickReply([searchButton, { label: 'สินค้าแนะนำ' }, { label: 'หมวดหมู่สินค้า' }]),
     }));
   }
 
-  // user = มาจากข้อความที่พิมพ์ในโหมดค้นหา (ไม่ใช่ปุ่มดูเพิ่มเติม) → ค้นไม่เจอแล้วส่งต่อเจ้าหน้าที่ได้
+  // user = มาจากข้อความ "ค้นหา: …" ที่พิมพ์เอง (ไม่ใช่ปุ่มดูเพิ่มเติม/ตัวอย่าง) → ค้นไม่เจอแล้วส่งต่อเจ้าหน้าที่ได้
   // scope = '' ผลหลัก · 'spec' = เฉพาะสินค้าที่มีคำค้นแค่ในคุณสมบัติ (กดจากปุ่มใต้ผลหลัก)
   // ดึงผลทั้งหมดครั้งเดียว (สินค้ามีไม่กี่สิบตัว) แล้วแบ่งชุดเอง เพราะต้องแยก "ชื่อตรง" ออกจาก "สเปคตรง" ก่อนแบ่งหน้า
   async function onSearch(token, word, page = 1, user = null, typed = word, scope = '') {
@@ -112,13 +117,13 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
       return reply(token, [text(intro + hint), carousel]);
     }
     if (page > 1 || scope) return reply(token, text('แสดงผลครบแล้วครับ'));
-    if (question) return handoff(token, user);
+    if (question) return handoff(token);
     const sugg = (r.suggestions || []).map((s) => ({ label: s.product_name, data: `spec=${s.product_id}`, text: `ดูคุณสมบัติ ${s.product_name}` }));
     return reply(token, text(
       sugg.length
         ? `ไม่พบ “${word}” ครับ คุณหมายถึงสินค้าเหล่านี้ไหม? หรือกด “${STAFF}”`
         : `ไม่พบ “${word}” ครับ ลองพิมพ์ชื่อรุ่นหรือคุณสมบัติอื่น หรือกด “${STAFF}”`,
-      { quickReply: quickReply([...sugg, { label: STAFF }]) },
+      { quickReply: quickReply([...sugg, searchButton, { label: STAFF }]) },
     ));
   }
 
@@ -142,11 +147,8 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     const token = ev.replyToken;
 
     switch (msg) {
-      case 'ค้นหาสินค้า':
-        await awaitingSearch.set(user, Date.now() + SEARCH_TTL);
-        return reply(token, text('พิมพ์ชื่อสินค้า รุ่น หรือคุณสมบัติที่ต้องการได้เลยครับ (หรือเลือกด้านล่าง)', {
-          quickReply: quickReply([{ label: 'กล้องติดรถยนต์' }, { label: 'GPS ติดตามรถ' }, { label: 'DTRACK' }, { label: 'Hikvision' }, { label: 'กันน้ำ IP67', text: 'IP67' }]),
-        }));
+      case 'ค้นหาสินค้า': // เมนูรุ่นเก่า (ส่งข้อความ) / พิมพ์เอง — เมนูปัจจุบันเป็น postback "search"
+        return reply(token, text(SEARCH_HINT, { quickReply: searchExamples() }));
       case 'สินค้าแนะนำ': {
         const r = await api('/api/products?sort=popular&limit=10');
         return sendProducts(token, r.products, 'สินค้ายอดนิยมครับ ปัดดูได้เลย กด “ดูคุณสมบัติ” เพื่อดูสเปค');
@@ -161,25 +163,25 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
         return reply(token, text(webBase()
           ? `เปรียบเทียบสินค้าได้สูงสุด 4 รายการที่ ${webBase()}/compare`
           : 'หน้าเปรียบเทียบบนเว็บยังไม่เปิดให้ใช้จากภายนอกครับ กด “ดูคุณสมบัติ” บนการ์ดสินค้าเพื่อดูสเปคทีละรายการได้', {
-          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, { label: 'ค้นหาสินค้า' }, { label: 'หมวดหมู่สินค้า' }]),
+          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
         }));
       case 'สาขา DTC Shop':
         return onShops(token);
       case 'สั่งซื้อออนไลน์':
         return reply(token, text('เลือกสินค้าแล้วกด “ดูคุณสมบัติ” จะมีปุ่มสั่งซื้อผ่าน Shopee / Lazada / TikTok ของสินค้านั้นครับ หรือพิมพ์สอบถาม/สั่งซื้อในแชตนี้ได้เลย', {
-          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, { label: 'ค้นหาสินค้า' }, { label: 'หมวดหมู่สินค้า' }]),
+          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
         }));
     }
 
-    if (msg === STAFF) return handoff(token, user);
-    if (HUMAN_TOPICS.has(msg)) { await awaitingSearch.delete(user); return; } // ให้เจ้าหน้าที่ตอบใน Chat
+    if (msg === STAFF) return handoff(token);
+    if (HUMAN_TOPICS.has(msg)) return; // ให้เจ้าหน้าที่ตอบใน Chat
 
-    const until = await awaitingSearch.get(user);
-    if (until > Date.now()) {
-      await awaitingSearch.set(user, Date.now() + SEARCH_TTL); // ค้นต่อได้อีกโดยไม่ต้องกดปุ่มใหม่
-      const typed = msg.replace(/^GPS ติดตามรถ$/, 'GPS');
+    const m = msg.match(SEARCH_TYPED);
+    if (m) {
+      const typed = m[1].trim().replace(/^GPS ติดตามรถ$/, 'GPS');
+      if (!typed) return reply(token, text(SEARCH_HINT, { quickReply: searchExamples() })); // ส่ง "ค้นหา:" เปล่าๆ
       const q = cleanQuery(typed);
-      if (!q && QUESTION.test(typed)) return handoff(token, user); // "ครับ" / "?" อย่างเดียว
+      if (!q && QUESTION.test(typed)) return handoff(token); // "ค้นหา: ครับ" / "?" อย่างเดียว
       return onSearch(token, q || typed, 1, user, typed);
     }
     // ข้อความอื่นปล่อยให้เจ้าหน้าที่ตอบ
@@ -187,6 +189,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
 
   async function onPostback(ev) {
     const data = new URLSearchParams(ev.postback.data);
+    if (data.has('search')) return reply(ev.replyToken, text(SEARCH_HINT, { quickReply: searchExamples() })); // แป้นพิมพ์เปิดพร้อม "ค้นหา: " แล้ว
     if (data.has('spec')) {
       const d = await api(`/api/products/${encodeURIComponent(data.get('spec'))}`);
       return reply(ev.replyToken, specBubble(d, ctx));

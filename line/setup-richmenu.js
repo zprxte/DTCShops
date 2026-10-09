@@ -22,6 +22,8 @@ const cell = (row, col, action) => ({
 const sw = (to) => ({ type: 'richmenuswitch', richMenuAliasId: ALIASES[to], data: `tab=${to}` });
 const msg = (text, label = text) => ({ type: 'message', label: label.slice(0, 20), text });
 const uri = (u, label) => ({ type: 'uri', label, uri: u });
+// ค้นหา: เปิดแป้นพิมพ์พร้อมเติม "ค้นหา: " — บอทถือว่าข้อความที่ขึ้นต้นแบบนี้คือคำค้น (handler.js) ไม่ต้องจำสถานะ
+const search = () => ({ type: 'postback', label: 'ค้นหาสินค้า', data: 'search', displayText: 'ค้นหาสินค้า', inputOption: 'openKeyboard', fillInText: 'ค้นหา: ' });
 
 // webBase = หน้าเว็บที่คนนอกเปิดได้ · ไม่มี = ปุ่มเปรียบเทียบส่งข้อความให้บอทตอบแทน
 function menus(webBase) {
@@ -42,7 +44,7 @@ function menus(webBase) {
       image: 'menu-shop.jpg',
       areas: [
         tabArea(0, sw('gps')), tabArea(1, sw('shop')),
-        cell(0, 0, msg('ค้นหาสินค้า')),
+        cell(0, 0, search()),
         cell(0, 1, webBase ? uri(`${webBase}/compare`, 'เปรียบเทียบสินค้า') : msg('เปรียบเทียบสินค้า')),
         cell(0, 2, msg('สินค้าแนะนำ')),
         cell(1, 0, msg('หมวดหมู่สินค้า')),

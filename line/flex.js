@@ -175,9 +175,12 @@ export function quickReply(items) {
   return {
     items: items.slice(0, 13).map((it) => ({
       type: 'action',
-      action: it.data
-        ? { type: 'postback', label: it.label.slice(0, 20), data: it.data, displayText: it.text ?? it.label }
-        : { type: 'message', label: it.label.slice(0, 20), text: it.text ?? it.label },
+      action: it.keyboard != null
+        // เปิดแป้นพิมพ์พร้อมเติมข้อความไว้ให้ (เช่น "ค้นหา: ") — ผู้ใช้พิมพ์ต่อท้ายแล้วกดส่งเอง
+        ? { type: 'postback', label: it.label.slice(0, 20), data: it.data, inputOption: 'openKeyboard', fillInText: it.keyboard }
+        : it.data
+          ? { type: 'postback', label: it.label.slice(0, 20), data: it.data, displayText: it.text ?? it.label }
+          : { type: 'message', label: it.label.slice(0, 20), text: it.text ?? it.label },
     })),
   };
 }
