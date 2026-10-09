@@ -71,13 +71,28 @@ export function productCarousel(products, ctx, altText = 'สินค้า', m
   return { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } };
 }
 
+// สินค้าหลายโมเดล → การ์ดปัด 1 ใบต่อโมเดล (ราคา + สเปคของโมเดลนั้น) · โมเดลเดียว/ไม่มีโมเดล → การ์ดเดียวแบบเดิม
 export function specBubble(d, ctx) {
-  const specs = (d.product_attribute_value || []).map((a) => ({ k: a.attribute?.attribute_name ?? '', v: String(a.value ?? '') }));
+  const models = (d.product_model || []).slice(0, 12);
+  if (models.length < 2) return { type: 'flex', altText: `คุณสมบัติ ${shortName(d.product_name)}`, contents: specCard(d, ctx) };
+  return [
+    { type: 'text', text: `${shortName(d.product_name)} มี ${d.product_model.length} โมเดลครับ ปัดดูทีละโมเดล` },
+    { type: 'flex', altText: `คุณสมบัติ ${shortName(d.product_name)} (${models.length} โมเดล)`, contents: { type: 'carousel', contents: models.map((m) => specCard(d, ctx, m)) } },
+  ];
+}
+
+// สเปคของโมเดล = สเปคร่วมที่ถูกแทนด้วยค่าเฉพาะโมเดล (ชื่อหัวข้อเดียวกัน) แบบเดียวกับหน้าเว็บ
+// แต่เอาค่าเฉพาะโมเดลขึ้นก่อนและใส่สีให้เห็น — การ์ดโชว์ได้ SPEC_ROWS แถว ถ้าไว้ท้ายจะถูกตัดพอดี
+function specCard(d, ctx, model = null) {
+  const toSpec = (a, own) => ({ k: a.attribute?.attribute_name ?? '', v: String(a.value ?? ''), own });
+  const own = (model?.product_attribute_value || []).map((a) => toSpec(a, true));
+  const ownNames = new Set(own.map((s) => s.k));
+  const specs = [...own, ...(d.product_attribute_value || []).map((a) => toSpec(a, false)).filter((s) => !ownNames.has(s.k))];
   const rows = specs.slice(0, SPEC_ROWS).map((s) => ({
     type: 'box', layout: 'horizontal', spacing: 'md', margin: 'sm',
     contents: [
-      { type: 'text', text: s.k || '-', size: 'xxs', color: '#5F6B78', flex: 4, wrap: true },
-      { type: 'text', text: s.v || '-', size: 'xxs', weight: 'bold', flex: 6, wrap: true },
+      { type: 'text', text: s.k || '-', size: 'xxs', color: s.own ? '#1F6FB2' : '#5F6B78', flex: 4, wrap: true },
+      { type: 'text', text: s.v || '-', size: 'xxs', weight: 'bold', color: s.own ? '#1F6FB2' : '#111111', flex: 6, wrap: true },
     ],
   }));
 
@@ -85,12 +100,15 @@ export function specBubble(d, ctx) {
   const img = ctx.imageUrl(d.product_image);
   if (img) head.unshift({ type: 'image', url: img, size: 'xs', aspectMode: 'fit', flex: 0, backgroundColor: '#FFFFFF' });
 
+  const price = model ? formatPrice({ product_price: model.product_price ?? d.product_price }) : formatPrice(d);
   const body = [
     { type: 'box', layout: 'horizontal', spacing: 'md', contents: head, alignItems: 'center' },
-    { type: 'text', text: `คุณสมบัติ · ${formatPrice(d)}`, size: 'xs', weight: 'bold', color: '#1F6FB2', margin: 'lg' },
+    ...(model ? [{ type: 'text', text: `โมเดล: ${model.model_name}`, size: 'sm', weight: 'bold', color: '#D6402A', margin: 'md', wrap: true }] : []),
+    { type: 'text', text: `คุณสมบัติ · ${price}`, size: 'xs', weight: 'bold', color: '#1F6FB2', margin: model ? 'sm' : 'lg' },
     { type: 'separator', margin: 'sm' },
     ...(rows.length ? rows : [{ type: 'text', text: 'ยังไม่มีข้อมูลคุณสมบัติ', size: 'xs', color: '#5F6B78', margin: 'sm' }]),
   ];
+  if (own.length) body.push({ type: 'text', text: 'ตัวสีน้ำเงิน = เฉพาะโมเดลนี้', size: 'xxs', color: '#1F6FB2', margin: 'md' });
   if (specs.length > SPEC_ROWS) {
     body.push({ type: 'text', text: `อีก ${specs.length - SPEC_ROWS} หัวข้อ ${ctx.webUrl(d) ? 'กด “ดูคุณสมบัติทั้งหมด”' : 'ดูได้บนเว็บ'}`, size: 'xxs', color: '#5F6B78', margin: 'md' });
   }
@@ -116,14 +134,22 @@ export function specBubble(d, ctx) {
 
   const bubble = { type: 'bubble', size: 'mega', body: { type: 'box', layout: 'vertical', contents: body } };
   if (footer.length) bubble.footer = { type: 'box', layout: 'vertical', spacing: 'sm', contents: footer };
-  return { type: 'flex', altText: `คุณสมบัติ ${shortName(d.product_name)}`, contents: bubble };
+  return bubble;
 }
 
-export function shopCarousel(shops, ctx) {
-  const bubbles = shops.slice(0, 12).map((s) => {
+// "1176 ต่อ 51" → tel:1176,51 (จุลภาค = รอสายแล้วกดเบอร์ต่อให้เอง) · เดิมได้แค่ tel:1176 ทุกสาขา
+function telUri(raw) {
+  const [main, ext] = String(raw || '').split(/ต่อ|ext\.?|#/i).map((s) => (s || '').replace(/\D/g, ''));
+  if (!main || main.length < 3) return null;
+  return `tel:${main}${ext ? ',' + ext : ''}`;
+}
+
+// more = { remaining, data } → สาขา 11 ใบ + การ์ด "ดูเพิ่มเติม" แบบเดียวกับผลค้นหาสินค้า
+export function shopCarousel(shops, ctx, altText = 'สาขา DTC Shop', more = null) {
+  const bubbles = shops.slice(0, more ? 11 : 12).map((s) => {
     const buttons = [];
-    const tel = String(s.tel || '').match(/[0-9]{3,}/)?.[0];
-    if (tel) buttons.push({ type: 'button', style: 'primary', color: '#06A648', height: 'sm', action: { type: 'uri', label: `โทร ${s.tel}`.slice(0, 40), uri: `tel:${tel}` } });
+    const tel = telUri(s.tel);
+    if (tel) buttons.push({ type: 'button', style: 'primary', color: '#06A648', height: 'sm', action: { type: 'uri', label: `โทร ${s.tel}`.slice(0, 40), uri: tel } });
     if (s.lat && s.lon) buttons.push({ type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: 'เปิดแผนที่', uri: `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}` } });
     const bubble = {
       type: 'bubble', size: 'kilo',
@@ -140,7 +166,8 @@ export function shopCarousel(shops, ctx) {
     if (img) bubble.hero = { type: 'image', url: img, size: 'full', aspectRatio: '20:13', aspectMode: 'cover' };
     return bubble;
   });
-  return { type: 'flex', altText: 'สาขา DTC Shop', contents: { type: 'carousel', contents: bubbles } };
+  if (more) bubbles.push(moreBubble(more));
+  return { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } };
 }
 
 // Quick Reply — ปุ่มเลือกใต้ช่องแชต (สูงสุด 13 ปุ่ม, ป้ายยาวสุด 20 ตัวอักษร)

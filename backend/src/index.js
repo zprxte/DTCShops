@@ -99,6 +99,11 @@ app.use((err, req, res, _next) => {
   })
 })
 
-app.listen(PORT, () => {
-  console.log(` Server running at http://localhost:${PORT}`)
-})
+// รันตรง (node src/index.js) = เปิดพอร์ตเอง · ถูก require (Vercel function) = ส่ง app ให้แพลตฟอร์มเรียก
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(` Server running at http://localhost:${PORT}`)
+  })
+}
+
+module.exports = app

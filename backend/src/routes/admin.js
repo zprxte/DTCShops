@@ -1,12 +1,11 @@
 const express = require('express')
 const router = express.Router()
-const path = require('path')
-const fs = require('fs')
 const multer = require('multer')
 const Fuse = require('fuse.js')
 const { PrismaClient } = require('@prisma/client')
 const authMiddleware = require('../middleware/auth')
 const asyncHandler = require('../utils/asyncHandler')
+const { saveImage } = require('../utils/imageStore')
 const { resolveModels, buildGallery } = require('./products')
 const { cleanText, safeUrl, sanitizeRichText, toPage, toLimit } = require('../utils/sanitize')
 const { clearAll: clearPublicCache } = require('../utils/cache')
@@ -139,58 +138,29 @@ async function resolveSlug(desiredSlug, productName, excludeItmCode) {
   }
 }
 
-// Files land in a "YYYY-MM" subfolder (database/uploads/products/2026-09/
-// xxx.png), same convention as dtcshops.com's own production paths
-// ("2024-12/xxx.jpg" etc) instead of one flat folder.
-// Lives under database/uploads (not backend/uploads any more) so it sits
-// alongside the rest of this project's data files — database/'s docker-
-// compose.yml mounts the REST of that folder read-only (schema.sql etc.),
-// with a second, more specific bind mount just for uploads/ overriding that
-// to read-write, since this route needs to write here. destination is a
-// function so the month folder is created ON EVERY UPLOAD, not just once at
-// server start — if it ever gets wiped mid-session, the very next upload
-// heals it automatically instead of failing.
-// '../../../database' climbs to the project root on the host (backend/src/routes
-// → root) and to "/" inside Docker, where compose mounts database/ at /database.
-// It used to be '../../database' (= backend/database), which made an empty
-// backend/database folder appear on the host (2026-09-15).
-const uploadDir = path.join(__dirname, '../../../database/uploads/products')
-fs.mkdirSync(uploadDir, { recursive: true })
+// รูปเก็บที่ไหนตัดสินใน utils/imageStore.js — database/uploads/products/<ปี-เดือน>/ (Docker)
+// หรือ Supabase Storage (Vercel ดิสก์อ่านอย่างเดียว) · DB ได้ path /uploads/products/... แบบเดียวกันทั้งสองแบบ
+// multer ถือไฟล์ไว้ในหน่วยความจำ (≤5MB) แล้วส่งต่อให้ imageStore เขียนจริง
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' }
 
-function currentMonthFolder() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const dir = path.join(uploadDir, currentMonthFolder())
-      fs.mkdirSync(dir, { recursive: true })
-      cb(null, dir)
-    },
-    filename: (req, file, cb) => {
-      // นามสกุลตามชนิดไฟล์ที่ผ่าน fileFilter ไม่ใช่ชื่อไฟล์ที่ผู้ใช้ส่งมา — กัน evil.php ที่อ้างตัวเป็น image/png
-      const ext = IMAGE_EXT[file.mimetype] || ''
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`)
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, ALLOWED_IMAGE_TYPES.includes(file.mimetype)),
 })
 //อัพโหลดรูปสินค้า
-router.post('/upload/image', (req, res) => {
-  upload.single('image')(req, res, (err) => {
+router.post('/upload/image', (req, res, next) => {
+  upload.single('image')(req, res, async (err) => {
     if (err) return res.status(400).json({ message: 'อัปโหลดรูปไม่สำเร็จ' })
     if (!req.file) return res.status(400).json({ message: 'ไฟล์ไม่ถูกต้อง (รองรับ jpeg/png/webp/gif ขนาดไม่เกิน 5MB)' })
-    // destination is an absolute path (e.g. .../database/uploads/products/2026-09)
-    // — basename() recovers just the "2026-09" segment to rebuild the public
-    // URL. The URL prefix stays "/uploads/products/..." regardless of where
-    // the file actually lives on disk — see index.js's express.static mount.
-    const monthDir = path.basename(req.file.destination)
-    res.json({ url: `/uploads/products/${monthDir}/${req.file.filename}` })
+    try {
+      // นามสกุลตามชนิดไฟล์ที่ผ่าน fileFilter ไม่ใช่ชื่อไฟล์ที่ผู้ใช้ส่งมา — กัน evil.php ที่อ้างตัวเป็น image/png
+      const { url } = await saveImage({ buffer: req.file.buffer, ext: IMAGE_EXT[req.file.mimetype] })
+      res.json({ url })
+    } catch (e) {
+      next(e)
+    }
   })
 })
 //แปลงข้อมูลสินค้าให้อยู่ในรูปแบบที่ต้องการ

@@ -121,7 +121,14 @@ function bitCount(n) {
 // Normalization — ทำให้คำที่เขียนต่างกันแต่หมายถึงสิ่งเดียวกันเทียบกันได้ก่อนทุกขั้นตอน
 function normalize(value) {
   return String(value ?? '').normalize('NFKC').toLowerCase().trim()
+    // NFKC แยกสระอำเป็น นิคหิต + สระอา (ํา) แล้ว Intl.Segmenter ตัดคำผิด
+    // ("กล้องกันน้ำ" → "กล้อ" + "งกันน้ํา") — ประกอบกลับเป็นสระอำก่อนตัดคำ
+    .replace(/ํา/g, 'ำ')
     .replace(/wi[\s-]+fi/g, 'wifi')
+    // แยก "SDcard" / "microSD" ที่เขียนติดกันให้ตรงกับ "SD Card" / "micro SD" ที่คนพิมพ์
+    // (ชื่อสินค้า Sandisk เขียน "Micro SDcard" ค้น "sd card" เดิมจึงไม่เจอ)
+    .replace(/sd[\s-]?card/g, 'sd card')
+    .replace(/micro[\s-]?sd/g, 'micro sd')
     .replace(/dash[\s-]+cam/g, 'dashcam')
 }
 
@@ -525,6 +532,8 @@ router.get('/', async (req, res) => {
       // คำที่ระบบใช้ค้นจริงเมื่อกู้แป้นพิมพ์ให้ (null = ค้นด้วยคำที่ผู้ใช้พิมพ์ตรงๆ)
       // ฝั่งหน้าเว็บเอาไปขึ้นข้อความบอกผู้ใช้ว่าแสดงผลของคำไหนอยู่
       searched_as,
+      // คำค้นหลังตัดคำและตัดคำเชื่อม — บอท LINE ใช้เทียบกับ matched_words ว่าตรงครบทุกคำไหม
+      query_words: queryWords(effectiveTerm),
     })
   } catch (err) {
     console.error('Search error:', err)

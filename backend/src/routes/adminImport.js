@@ -8,8 +8,6 @@
 //
 // logic ตรวจข้อมูลทั้งหมดอยู่ใน utils/importPlan.js (ไม่แตะ DB, มีเทสต์)
 const express = require('express')
-const fs = require('fs')
-const path = require('path')
 const multer = require('multer')
 const ExcelJS = require('exceljs')
 const { PrismaClient } = require('@prisma/client')
@@ -17,6 +15,7 @@ const asyncHandler = require('../utils/asyncHandler')
 const { stripHtml } = require('../utils/stripHtml')
 const { PRODUCT_COLUMNS, SPEC_COLUMNS, buildPlan, normName, normalizeTags, isRemoteImage, LOCAL_IMAGE } = require('../utils/importPlan')
 const { fetchImage, checkImageUrl } = require('../utils/remoteImage')
+const { saveImage, removeImage, imageExists } = require('../utils/imageStore')
 
 const router = express.Router()
 const prisma = new PrismaClient()
@@ -28,9 +27,6 @@ const SHEET_ALIASES = { [PRODUCT_SHEET]: ['สินค้า'], [SPEC_SHEET]: [
 const LIST_SHEET = '_lists' // ชีตซ่อนสำหรับ dropdown (ชื่ออังกฤษ เลี่ยงปัญหาเครื่องหมายคำพูดในสูตร)
 const MAX_ROWS = 3000
 const MAX_SPEC_ROWS = 30000 // ค่าคุณสมบัติ 1 ช่อง = 1 แถวภายใน (สินค้า × หัวข้อ)
-// โฟลเดอร์ database/ — คำนวณแบบเดียวกับ uploadDir ใน routes/admin.js (บนเครื่องและใน Docker)
-const DATABASE_DIR = path.join(__dirname, '../../../database')
-const UPLOAD_ROOT = path.join(DATABASE_DIR, 'uploads')
 const HEADER_FILL = 'FF4472C4' // สีหัวตารางตามภาพเทมเพลตที่ผู้ใช้ส่งมา
 
 const upload = multer({
@@ -77,12 +73,6 @@ async function loadSnapshot(db = prisma) {
   }
 }
 
-// path /uploads/... ที่ชี้ไปไฟล์จริงในโฟลเดอร์ uploads (กัน ../ หลุดออกนอกโฟลเดอร์)
-function localImageExists(value) {
-  const full = path.normalize(path.join(DATABASE_DIR, value))
-  return full.startsWith(UPLOAD_ROOT + path.sep) && fs.existsSync(full)
-}
-
 // ตรวจรูปทุกค่าที่ต่างจากของเดิมก่อนสร้างแผน — ลิงก์ภายนอกลองโหลดจริง (มีแคช 10 นาที)
 // ผลใส่ใน snapshot.imageChecks ให้ planner ขึ้น error ในพรีวิวได้ตั้งแต่ก่อนกดยืนยัน
 async function attachImageChecks(rows, snapshot) {
@@ -100,7 +90,7 @@ async function attachImageChecks(rows, snapshot) {
     while (queue.length) {
       const value = queue.shift()
       if (isRemoteImage(value)) checks.set(value, await checkImageUrl(value))
-      else if (LOCAL_IMAGE.test(value)) checks.set(value, localImageExists(value) ? { ok: true } : { ok: false, error: 'ไม่พบไฟล์นี้ในระบบ' })
+      else if (LOCAL_IMAGE.test(value)) checks.set(value, (await imageExists(value)) ? { ok: true } : { ok: false, error: 'ไม่พบไฟล์นี้ในระบบ' })
     }
   }))
   snapshot.imageChecks = checks
@@ -433,17 +423,6 @@ function slugify(text) {
   return String(text || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-// เก็บรูปที่ดาวน์โหลดมา — โฟลเดอร์/ชื่อไฟล์แบบเดียวกับ POST /admin/upload/image
-function saveImage({ buffer, ext }) {
-  const now = new Date()
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const dir = path.join(UPLOAD_ROOT, 'products', month)
-  fs.mkdirSync(dir, { recursive: true })
-  const file = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
-  fs.writeFileSync(path.join(dir, file), buffer)
-  return { url: `/uploads/products/${month}/${file}`, full: path.join(dir, file) }
-}
-
 router.post('/commit', asyncHandler(async (req, res) => {
   const rows = rowsFromBody(req.body)
   const attributeMap = req.body?.attribute_map
@@ -458,18 +437,18 @@ router.post('/commit', asyncHandler(async (req, res) => {
   const imageChecks = new Map()
   const localByUrl = new Map()
   const savedFiles = []
-  const cleanup = () => savedFiles.forEach((f) => fs.rmSync(f, { force: true }))
+  const cleanup = () => Promise.all(savedFiles.map(removeImage))
   for (const p of pre.products) {
     const url = p.values?.product_image
     if (!['create', 'update'].includes(p.action) || !isRemoteImage(url) || localByUrl.has(url)) continue
     if (!p.changes.some((c) => c.field === 'product_image')) continue
     try {
-      const saved = saveImage(await fetchImage(url))
-      savedFiles.push(saved.full)
+      const saved = await saveImage(await fetchImage(url))
+      savedFiles.push(saved.key)
       localByUrl.set(url, saved.url)
       imageChecks.set(url, { ok: true })
     } catch (e) {
-      cleanup()
+      await cleanup()
       return res.status(400).json({ message: `โหลดรูปแถว ${p.row} ไม่สำเร็จ: ${e.message}` })
     }
   }
@@ -486,12 +465,12 @@ router.post('/commit', asyncHandler(async (req, res) => {
       return writePlan(tx, plan, localByUrl)
     }, { timeout: 60000 })
   } catch (e) {
-    cleanup()
+    await cleanup()
     throw e
   }
 
   if (!result.created) {
-    cleanup()
+    await cleanup()
     return res.status(400).json({ message: 'ยังบันทึกไม่ได้ — ข้อมูลในระบบเปลี่ยนระหว่างดูพรีวิว ตรวจรายการใหม่อีกครั้ง', plan: result.plan })
   }
   res.json({
