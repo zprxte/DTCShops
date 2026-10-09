@@ -12,6 +12,9 @@ Rich Menu 2 แท็บ ("DTC GPS & IoT" + "DTC SHOPS") สำหรับ LINE
 | `setup-richmenu.js` | สร้างเมนู 2 ชุด + พื้นที่กด + อัปโหลดรูป + alias `tab-gps`/`tab-shop` + ตั้งเป็นเมนูเริ่มต้น |
 | `check.js` | เช็กว่ารหัสใน `.env` ใช้ได้ และดูว่ามีเมนูอยู่กี่ชุด |
 | `env.js` | อ่านรหัสจาก `line/.env` และเรียก LINE API |
+| `handler.js` | ส่วนตอบข้อความ (ค้นหา/การ์ด/สาขา/postback) + ตรวจลายเซ็น — ใช้ร่วมกันระหว่าง `bot.js` กับ Vercel Function `frontend/api/line/webhook.js` |
+| `searchState.js` | จำว่าใครอยู่ในโหมด "รอคำค้น" — ในหน่วยความจำ หรือตาราง `line_search_state` ใน Supabase เมื่อมี `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` |
+| `bot.js` | `npm run bot` — เซิร์ฟเวอร์ :4100 + tunnel + ส่งต่อรูป/หน้าเว็บ dev แล้วเรียก `handler.js` |
 | `package.json` | คำสั่ง `npm run …` + Playwright (ใช้เฉพาะ `render`) |
 | `Dockerfile` | image สำหรับ production (รัน `bot.js --no-tunnel`) — ใช้กับ `database/docker-compose.prod.yml --profile line` |
 | `.env.example` | แบบไฟล์ `line/.env` |
@@ -94,6 +97,23 @@ docker compose -f docker-compose.prod.yml --profile line up -d --build
 ```
 
 แล้วตั้ง Webhook URL ใน LINE Developers เป็น `https://<โดเมน>/line/webhook` ครั้งเดียว · ใน `line/.env` บนเซิร์ฟเวอร์ใส่ `PUBLIC_BASE_URL` (และ `WEB_BASE_URL`) เป็นโดเมนนั้น
+
+## บอทบน Vercel (เว็บทดสอบ — ไม่ต้องรันบอทเอง)
+
+บอทรันเป็น function ของโปรเจกต์ Vercel `dtc-shops` ที่ `https://dtc-shops.vercel.app/api/line/webhook` (`frontend/api/line/webhook.js` → `handler.js`) · push ขึ้น `main` แล้วบอทอัปเดตพร้อมเว็บ
+
+ตั้งครั้งเดียว:
+
+1. Supabase › SQL Editor — ตารางเก็บสถานะ "รอคำค้น" (function แต่ละครั้งอาจได้เครื่องใหม่ จำในหน่วยความจำไม่ได้):
+   ```sql
+   create table if not exists line_search_state (user_id text primary key, until timestamptz not null);
+   alter table line_search_state enable row level security; -- ไม่มี policy = เข้าถึงได้แค่ service_role
+   ```
+2. Vercel › `dtc-shops` › Settings › Environment Variables (Production) — เพิ่ม `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (ค่าเดียวกับ `line/.env`), `API_ORIGIN` และ `WEB_BASE_URL` = `https://dtc-shops.vercel.app` (`SUPABASE_URL`/`SUPABASE_SERVICE_KEY` มีอยู่แล้ว) → Redeploy
+3. LINE Developers › Messaging API › Webhook URL = `https://dtc-shops.vercel.app/api/line/webhook` → Verify · เปิด Use webhook
+4. ในเครื่อง: `line/.env` ตั้ง `WEB_BASE_URL=https://dtc-shops.vercel.app` แล้ว `npm run setup` (ปุ่มเปรียบเทียบในเมนูชี้เว็บนี้ถาวร)
+
+ห้ามรัน `npm run bot` ค้างไว้พร้อมกัน — ตอนเปิด มันตั้ง Webhook URL เป็น tunnel ของเครื่องทับ (กลับมาใช้ Vercel = ตั้ง URL ในข้อ 3 ใหม่)
 
 ## ข้อจำกัดตอนนี้
 

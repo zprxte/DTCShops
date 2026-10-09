@@ -4,7 +4,7 @@
 FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package.json env.js flex.js bot.js setup-richmenu.js check.js menu-gps.jpg menu-shop.jpg ./
+COPY package.json env.js flex.js handler.js searchState.js bot.js setup-richmenu.js check.js menu-gps.jpg menu-shop.jpg ./
 USER node
 EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
