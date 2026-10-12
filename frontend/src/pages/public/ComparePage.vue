@@ -53,6 +53,13 @@ function effectivePrice(column: CompareColumn): number | string | null {
   return effectiveModel(column)?.product_price ?? column.product.product_price
 }
 
+//หน่วยราคาต่อท้ายราคา — หมวด Software ขายแบบสมัครสมาชิก (/ เดือน) ที่เหลือ / ชิ้น
+//กติกาเดียวกับ SUBSCRIPTION_CATEGORY_ID ใน ProductDetailPage.vue
+const SUBSCRIPTION_CATEGORY_ID = 'PT-00006'
+function priceUnitLabel(column: CompareColumn): string {
+  return langs(column.product.category?.category_id === SUBSCRIPTION_CATEGORY_ID ? 'priceUnitSubscriptionLabel' : 'priceUnitLabel')
+}
+
 onMounted(() => {
   const idsParam = String(route.query.ids ?? '')
   if (idsParam && compareStore.items.length === 0) {
@@ -1355,6 +1362,7 @@ onBeforeUnmount(() => {
                   <p class="text-base font-bold text-brand-700">
                     <span v-if="!effectiveModel(column) && column.product.has_priced_models && column.product.product_price" class="block text-[11px] font-normal text-gray-500">{{ langs('startingFromPrice') }}</span>
                     {{ effectivePrice(column) ? `฿${Number(effectivePrice(column)).toLocaleString()}` : langs('priceOnRequest') }}
+                    <span v-if="Number(effectivePrice(column))" class="text-xs font-normal text-gray-500">{{ priceUnitLabel(column) }}</span>
                   </p>
                   <!-- ปุ่มเปลี่ยนสินค้า + เลือกโมเดล แถวเดียวกัน กว้างเท่ากันคนละครึ่ง สูงเท่ากัน
                        (สินค้าโมเดลเดียวไม่มีช่องเลือก ปุ่มจึงกว้างเต็มแถว) -->
