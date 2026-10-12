@@ -160,8 +160,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                formatPrice(_total(product)),
+              Text.rich(
+                TextSpan(
+                  text: formatPrice(_total(product)),
+                  children: [
+                    // ราคา 0 = ติดต่อสอบถาม ไม่มีหน่วย
+                    if (_total(product) != 0)
+                      TextSpan(
+                        text: ' ${priceUnitLabel(product.categoryId)}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                  ],
+                ),
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,

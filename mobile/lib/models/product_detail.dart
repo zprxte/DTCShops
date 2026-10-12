@@ -2,6 +2,7 @@
 class ProductDetail {
   final String productId;
   final String productName;
+  final String? categoryId;
   final String? categoryName;
   final num productPrice;
   final String? description;
@@ -16,6 +17,7 @@ class ProductDetail {
   const ProductDetail({
     required this.productId,
     required this.productName,
+    required this.categoryId,
     required this.categoryName,
     required this.productPrice,
     required this.description,
@@ -53,6 +55,7 @@ class ProductDetail {
     return ProductDetail(
       productId: json['product_id'].toString(),
       productName: json['product_name']?.toString() ?? '',
+      categoryId: json['category']?['category_id']?.toString(),
       categoryName: json['category']?['category_name']?.toString(),
       productPrice: (json['product_price'] as num?) ?? 0,
       description: json['description']?.toString(),

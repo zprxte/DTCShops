@@ -5,6 +5,7 @@ class CompareProduct {
   final String productName;
   final String? productImage;
   final num productPrice;
+  final String? categoryId; // ใช้เลือกหน่วยราคา (/ ชิ้น หรือ / เดือน)
 
   // ชื่อหัวข้อสเปค → ค่าที่ใช้ร่วมทุกโมเดล เช่น {'ความละเอียด': '1080p'}
   final Map<String, String> attributes;
@@ -17,6 +18,7 @@ class CompareProduct {
     required this.productName,
     required this.productImage,
     required this.productPrice,
+    required this.categoryId,
     required this.attributes,
     required this.models,
   });
@@ -43,6 +45,7 @@ class CompareProduct {
       productName: json['product_name']?.toString() ?? '',
       productImage: json['product_image']?.toString(),
       productPrice: (json['product_price'] as num?) ?? 0,
+      categoryId: json['category']?['category_id']?.toString(),
       attributes: parseAttributes(json['product_attribute_value']),
       models: ((json['product_model'] as List?) ?? const [])
           .map((row) => CompareModel.fromJson(row as Map<String, dynamic>))

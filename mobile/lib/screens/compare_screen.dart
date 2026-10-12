@@ -899,8 +899,21 @@ class _ColumnHeader extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 4),
-          Text(
-            formatPrice(column.price),
+          Text.rich(
+            TextSpan(
+              text: formatPrice(column.price),
+              children: [
+                if (column.price != 0)
+                  TextSpan(
+                    text: ' ${priceUnitLabel(column.product.categoryId)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                      color: AppColors.muted,
+                    ),
+                  ),
+              ],
+            ),
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
