@@ -45,6 +45,7 @@
 |---|---|
 | Emulator | `flutter run` เฉยๆ — `defaultValue` เป็น `http://10.0.2.2:4000` อยู่แล้ว (emulator มองเครื่องคอมเป็น `10.0.2.2` เสมอ ไม่ใช่ IP วง Wi-Fi) |
 | มือถือจริง | `flutter run --dart-define=API_ORIGIN=http://<IP ของคอม>:4000` — ต้องอยู่วง Wi-Fi เดียวกัน (ดู IP ด้วย `ipconfig`) |
+| คลาวด์ (เว็บทดสอบ) | `flutter run --dart-define=API_ORIGIN=https://dtc-shops.vercel.app` — ใช้ backend + รูปบน Vercel/Supabase ไม่ต้องเปิดคอม ใช้เน็ตมือถือได้ · ข้อมูลเป็นชุดบน Supabase (ไม่ sync กับ DB ในเครื่อง) |
 
 ⚠️ `--dart-define` จะมีผลก็ต่อเมื่อโค้ดอ่านค่าด้วย `String.fromEnvironment` — ถ้าเผลอเปลี่ยนกลับเป็นค่า hardcode **Flutter จะเมิน flag เงียบๆ โดยไม่เตือน** build ผ่านปกติแต่ได้ค่าเดิม
 
