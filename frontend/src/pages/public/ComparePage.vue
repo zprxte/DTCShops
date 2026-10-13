@@ -176,7 +176,7 @@ function openPicker(mode: string) {
   if (allProducts.value.length === 0 && !pickerLoading.value) {
     pickerLoading.value = true
     productAPI
-      .list({ limit: 100 })
+      .list({ limit: 100, sort: 'price_asc' })
       .then((res) => { allProducts.value = res.data.products ?? [] })
       .catch(() => { allProducts.value = [] })
       .finally(() => { pickerLoading.value = false })
