@@ -276,6 +276,58 @@ function itemFields(item) {
   ].map(([value, weight]) => ({ tokens: indexedWords(value), weight }))
 }
 
+function buildVocabulary(fieldsByItem) {
+  const vocabulary = new Set()
+  for (const fields of fieldsByItem) for (const field of fields) for (const token of field.tokens) vocabulary.add(token)
+  return vocabulary
+}
+
+// คลังคำของสินค้าชุดหนึ่ง — route ใช้ตรวจว่าคำที่กู้แป้นพิมพ์มาเป็นคำที่มีอยู่จริงไหม
+function vocabularyOf(items) {
+  return buildVocabulary(items.map(itemFields))
+}
+
+// คำไทยที่สะกดผิด ตัดคำเพี้ยน — Intl.Segmenter ตัดถูกเฉพาะคำที่รู้จัก พอสะกดผิดจะหั่นผิดที่
+function repairThaiTerms(query, vocabulary) {
+  const base = queryWords(query)
+  const isThai = (term) => /[฀-๿]/.test(term)
+  const exact = (term) => vocabulary.has(term)
+  if (!base.some((term) => isThai(term) && !exact(term))) return base
+  const bestScore = new Map()
+  const best = (term) => {
+    if (!bestScore.has(term)) bestScore.set(term, Math.max(0, ...scoreTermAgainstVocabulary(term, vocabulary).values()))
+    return bestScore.get(term)
+  }
+
+  const out = []
+  for (const run of normalize(query).match(/[a-z0-9]+|[฀-๿]+/g) || []) {
+    if (!isThai(run)) { out.push(run); continue }
+    const pieces = [...segmenter.segment(run)].filter((part) => part.isWordLike).map((part) => part.segment)
+    const runStart = out.length
+    for (let i = 0; i < pieces.length;) {
+      if (exact(pieces[i])) { out.push(pieces[i]); i++; continue }
+      let j = i
+      while (j < pieces.length && !exact(pieces[j])) j++
+      // ช่วงที่ลอง: ชิ้นที่ไม่ตรงเป๊ะทั้งหมด / พ่วงชิ้นหน้า / พ่วงชิ้นหลัง / พ่วงทั้งสองข้าง
+      // (พ่วงชิ้นหน้าได้เฉพาะชิ้นที่เพิ่งใส่จาก run เดียวกัน)
+      const spans = [[i, j], [i - 1, j], [i, j + 1], [i - 1, j + 1]]
+        .filter(([a, b]) => a >= 0 && b <= pieces.length && (a === i || out.length > runStart))
+        .map(([a, b]) => {
+          const merged = pieces.slice(a, b).join('')
+          return { a, b, merged, score: fuzzyAllowed(merged) || (a === i && b === j) ? best(merged) : 0 }
+        })
+        .filter((s) => s.score > 0)
+        .sort((x, y) => y.score - x.score || y.merged.length - x.merged.length)
+      const span = spans[0] && [spans[0].a, spans[0].b]
+      if (!span) { out.push(...pieces.slice(i, j)); i = j; continue }
+      if (span[0] < i) out.pop()
+      out.push(pieces.slice(span[0], span[1]).join(''))
+      i = span[1]
+    }
+  }
+  return [...new Set(out.filter((word) => !fillers.has(word)))]
+}
+
 // IDF (ครึ่งหนึ่งของ TF-IDF / BM25) — คำที่หายากบอกตัวตนสินค้าได้ดีกว่าคำที่มีอยู่ทั่วไป
 //
 // ปัญหาเดิม: ทุกคำในคำค้นน้ำหนักเท่ากันหมด ค้น "GPS DTRACK" แล้วคำว่า GPS ซึ่งมี
@@ -301,19 +353,18 @@ function inverseDocumentFrequency(docFreq, totalDocs) {
 //           เพราะรอบนั้นเกิดขึ้นตอนค้นไม่เจอแล้ว การไปบังคับให้ตรงครบทุกคำอีกครั้ง
 //           ก็ไม่เหลืออะไรให้แนะนำ (คำที่ทำให้ค้นไม่เจอยังได้ 0 เหมือนเดิมอยู่ดี)
 function searchProducts(items, query, { autocomplete = false, prefixMin = 4, requireAll = true, lenient = false } = {}) {
-  const terms = queryWords(query)
-  if (!terms.length) return []
+  if (!queryWords(query).length) return []
+
+  // แตกคำของสินค้าทุกตัวรอบเดียว แล้วรวมเป็น "คลังคำ" ให้ fuse ค้นทีเดียวต่อคำค้น
+  const fieldsByItem = items.map(itemFields)
+  const vocabulary = buildVocabulary(fieldsByItem)
+  const terms = repairThaiTerms(query, vocabulary)
 
   // เกณฑ์ขั้นต่ำของจำนวนคำที่ต้องตรง — ครึ่งหนึ่งคือเส้นแบ่งที่ยังพอบอกได้ว่า
   // "ผู้ใช้น่าจะหมายถึงตัวนี้" ถ้าปล่อยให้ตรงคำเดียวก็พอ พิมพ์มั่วจะมีสินค้าโผล่มา
   // แนะนำมั่วๆ ซึ่งแย่กว่าไม่แนะนำอะไรเลย · คำค้นคำเดียวได้ค่าเท่ากับ AND พอดี
   // (ceil(1/2) = 1) พฤติกรรมจึงไม่เปลี่ยน
   const minMatches = requireAll ? terms.length : Math.max(1, Math.ceil(terms.length / 2))
-
-  // แตกคำของสินค้าทุกตัวรอบเดียว แล้วรวมเป็น "คลังคำ" ให้ fuse ค้นทีเดียวต่อคำค้น
-  const fieldsByItem = items.map(itemFields)
-  const vocabulary = new Set()
-  for (const fields of fieldsByItem) for (const field of fields) for (const token of field.tokens) vocabulary.add(token)
 
   const scoreTables = terms.map((term, index) =>
     scoreTermAgainstVocabulary(term, vocabulary, {
@@ -439,6 +490,16 @@ router.get('/', async (req, res) => {
     //      จะไปแปลงคำไทยที่ถูกต้องอยู่แล้วให้กลายเป็นขยะ
     const usableToken = (token) => queryWords(token).length === 0 || toResults(token).length > 0
 
+    // คำที่ได้จากการสลับแป้นต้องเป็น "คำที่มีอยู่จริง" แบบตรงเป๊ะทุกคำ (ยาว ≥ 2 ตัว) — ไม่ใช่แค่
+    // ค้นแล้วเจอ ไม่งั้นคำมั่วที่สลับแป้นแล้วบังเอิญคล้ายคำจริงจะผ่าน fuzzy ซ้อนอีกชั้น
+    // ("yxjj62" → "ัปุ่่" ไปตรง "ปุ่ม", "ใหม" → ".s," เหลือ "s") · คำเชื่อมล้วนยังผ่านตามเดิม
+    const vocabulary = vocabularyOf(candidates)
+    const realWords = (text) => {
+      const ws = queryWords(text)
+      return ws.length === 0 || ws.every((w) => w.length >= 2 && vocabulary.has(w))
+    }
+    const swapAccepted = (text) => !!text && realWords(text) && queryWords(text).length > 0
+
     // Keyboard Layout Mapping (รายคำ) — เผื่อผู้ใช้สลับแป้นกลางประโยคแล้วสลับผิดคนละทิศ
     // เช่น "lbo8hkmuj,u ไรดร" ที่ตั้งใจพิมพ์ "สินค้าที่มี wifi" — คำแรกพิมพ์ไทยตอนแป้น
     // เป็นอังกฤษ คำหลังพิมพ์อังกฤษตอนแป้นเป็นไทย
@@ -454,7 +515,7 @@ router.get('/', async (req, res) => {
       const recovered = chunks.map((chunk) => {
         if (!chunk.trim() || usableToken(chunk)) return chunk
         const swapped = swapKeyboardLayout(chunk)
-        if (!swapped || swapped === chunk || !usableToken(swapped)) return chunk
+        if (!swapped || swapped === chunk || !realWords(swapped) || !usableToken(swapped)) return chunk
         changed = true
         return swapped
       })
@@ -471,9 +532,26 @@ router.get('/', async (req, res) => {
     // ตกมารายคำซึ่งต้องค้นเพิ่มสูงสุด 2 ครั้งต่อคำ — ยอมจ่ายได้เพราะเส้นทางนี้เดินเฉพาะ
     // ตอนผู้ใช้กำลังจะเห็น "ไม่พบสินค้า" อยู่แล้ว
     let searched_as = null
+    // ลืมสลับแป้นแล้วคำมีเครื่องหมาย — อักษรไทยหลายตัวอยู่บนปุ่มเครื่องหมาย (ใ = . · ช = = · ง = ')
+    // ซึ่ง words() ตัดทิ้ง ".=h" (ใช้) จึงเหลือ "h" แล้วไปเจอสินค้าอื่น ระบบเลยไม่เคยลองกู้แป้น
+    // → คำที่มีเครื่องหมายบนแป้นไทยปนอยู่ ลองสลับแป้นทั้งก้อนก่อนเลยแม้จะเจอผลแล้ว
+    //   ใช้ผลที่สลับก็ต่อเมื่อได้คำจริงตรงเป๊ะทุกคำ ("e-lock", "smart d-200", "4.5" สลับแล้วเป็น
+    //   คำไทยมั่ว จึงได้ผลเดิม)
+    const hasLayoutSymbol = [...searchTerm].some((ch) => THAI_BY_LATIN.has(ch) && !/[a-zA-Z0-9\s]/.test(ch))
+    if (results.length > 0 && hasLayoutSymbol) {
+      const swapped = swapKeyboardLayout(searchTerm)
+      const retry = swapped && swapped !== searchTerm && swapAccepted(swapped) ? toResults(swapped) : []
+      if (retry.length > 0) {
+        results = retry
+        effectiveTerm = swapped
+        searched_as = swapped
+      }
+    }
     if (results.length === 0) {
       // ลำดับ: สลับภาษาทั้งก้อน → สลับภาษารายคำ → สลับชั้น Shift (Caps Lock ค้าง)
-      const guesses = [swapKeyboardLayout(searchTerm), recoverPerToken(searchTerm), ...toggleThaiShift(searchTerm)]
+      // สองอันแรกเป็นการสลับแป้น ต้องได้คำจริง (swapAccepted) · อันหลังกู้จากตัวอักษรไทยเดิม ใช้เกณฑ์เดิม
+      const whole = swapKeyboardLayout(searchTerm)
+      const guesses = [swapAccepted(whole) ? whole : '', recoverPerToken(searchTerm), ...toggleThaiShift(searchTerm)]
       for (const candidate of guesses) {
         if (!candidate || candidate === searchTerm) continue
         const retry = toResults(candidate)
@@ -533,7 +611,8 @@ router.get('/', async (req, res) => {
       // ฝั่งหน้าเว็บเอาไปขึ้นข้อความบอกผู้ใช้ว่าแสดงผลของคำไหนอยู่
       searched_as,
       // คำค้นหลังตัดคำและตัดคำเชื่อม — บอท LINE ใช้เทียบกับ matched_words ว่าตรงครบทุกคำไหม
-      query_words: queryWords(effectiveTerm),
+      // (คำไทยที่สะกดผิดแล้วตัดเพี้ยนนับเป็นคำเดียวตามที่ searchProducts ใช้จริง — ดู repairThaiTerms)
+      query_words: repairThaiTerms(effectiveTerm, vocabulary),
     })
   } catch (err) {
     console.error('Search error:', err)
@@ -567,5 +646,7 @@ router.get('/autocomplete', async (req, res) => {
 module.exports = router
 module.exports.searchProducts = searchProducts
 module.exports.queryWords = queryWords
+module.exports.repairThaiTerms = repairThaiTerms
+module.exports.vocabularyOf = vocabularyOf
 module.exports.swapKeyboardLayout = swapKeyboardLayout
 module.exports.toggleThaiShift = toggleThaiShift
