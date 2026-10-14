@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// รายการสินค้า (สินค้าปกติ / ถังขยะ) — ค้นหา / แก้ / ลบ / กู้คืน
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { Plus, RotateCcw, SquarePen, Trash2, Undo2 } from 'lucide-vue-next'
@@ -22,13 +23,11 @@ const total = ref(0)
 const q = ref('')
 const loading = ref(true)
 const pendingDeleteId = ref<string | null>(null)
-// แท็บ "สินค้าที่ถูกลบ" — ดึงจาก GET /admin/products?deleted=1 (ตัวเดียวกับ
-// ลิสต์ปกติ แค่กลับด้านเงื่อนไข itm_flag) ให้กู้คืนสินค้าที่ลบผิดได้ (เดิมกด
-// "ลบ" แล้วไม่มีทางย้อนกลับเลยนอกจากแก้ DB ตรงๆ)
+// แท็บสินค้าที่ถูกลบ (?deleted=1) ไว้กู้คืน
 const viewDeleted = ref(false)
 const restoringId = ref<string | null>(null)
 
-// เลขคำขอล่าสุด — พิมพ์เร็วๆ คำขอเก่าอาจตอบกลับทีหลังคำขอใหม่ ให้ใช้ผลของคำขอล่าสุดเท่านั้น
+// คำขอล่าสุดชนะ (พิมพ์เร็วคำขอเก่าอาจตอบทีหลัง)
 let latestRequest = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -50,8 +49,7 @@ function load() {
 onMounted(load)
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-// ค้นหาทันทีขณะพิมพ์ แบบเดียวกับหน้าคุณสมบัติสินค้า — แต่ยังค้นฝั่ง backend (fuzzy)
-// จึงรอให้หยุดพิมพ์ 300ms ก่อนยิงคำขอ ไม่ยิงทุกตัวอักษร
+// ค้นหาขณะพิมพ์ หน่วง 300ms (ค้นฝั่ง backend)
 function onSearchInput() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(load, 300)

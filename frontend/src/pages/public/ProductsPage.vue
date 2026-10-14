@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// หน้าสินค้าทั้งหมด / ผลค้นหา: ตัวกรองหมวด+แท็ก (เก็บใน URL) + เรียง + แบ่งหน้า + คุณหมายถึง…?
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Info, Loader2, Search, SlidersHorizontal, X } from 'lucide-vue-next'
@@ -15,16 +16,14 @@ const router = useRouter()
 const { langs } = useLanguage()
 
 const products = ref<ProductCardData[]>([])
-// คำแนะนำ "คุณหมายถึง…?" — รูปเดียวกับ autocomplete เพราะต้องใช้ slug ทำลิงก์
+// คุณหมายถึง…? (มี slug ทำลิงก์เข้าหน้าสินค้า)
 const suggestions = ref<{ product_id: string; product_name: string; slug?: string | null }[]>([])
-// คำที่ระบบใช้ค้นจริงเมื่อกู้แป้นพิมพ์ให้ (ผู้ใช้พิมพ์ "เยห" ระบบค้น "gps" ให้)
-// null = ค้นด้วยคำที่ผู้ใช้พิมพ์ตรงๆ ไม่ต้องขึ้นข้อความอะไร
+// คำที่ระบบค้นจริงเมื่อกู้แป้นให้ (null = คำที่พิมพ์)
 const searchedAs = ref<string | null>(null)
 const total = ref(0)
 const totalPages = ref(1)
 const loading = ref(false)
-// โชว์ตัวหมุนเฉพาะตอนที่รอจริงๆ — คำขอส่วนใหญ่เสร็จใน ~50ms ถ้าโชว์ทันที
-// จะเห็นเป็นแค่การกะพริบ 1 เฟรม รบกวนสายตามากกว่าช่วยบอกอะไร
+// โชว์ตัวหมุนเฉพาะเมื่อรอนานจริง ไม่ให้กะพริบ
 const loadingVisible = ref(false)
 let loadingTimer: ReturnType<typeof setTimeout> | undefined
 watch(loading, (busy) => {
@@ -32,19 +31,12 @@ watch(loading, (busy) => {
   if (busy) loadingTimer = setTimeout(() => { loadingVisible.value = true }, 250)
   else loadingVisible.value = false
 })
-// เคยโหลดสำเร็จอย่างน้อยครั้งหนึ่งหรือยัง — กันโชว์ "พบ 0 รายการ" ตอนเปิดหน้าครั้งแรก
+// เคยโหลดสำเร็จหรือยัง (กันโชว์ "พบ 0 รายการ" ตอนเปิดหน้า)
 const hasLoaded = ref(false)
 const error = ref<string | null>(null)
 const categories = ref<{ category_id: string; category_name: string }[]>([])
 
-// ===== ตัวกรองแบบติ๊กได้หลายรายการ (9 ก.ย. 2026) =====
-// เดิมเป็น dropdown หมวดหมู่ค่าเดียว ตอนนี้เป็นแผง checkbox 2 กลุ่ม
-//   • หมวดหมู่ — ติ๊กหลายอัน = "หรือ" (เห็นสินค้าของทุกหมวดที่ติ๊ก)
-//   • แท็ก — คำสั้นๆ ที่คนเรียกกันจริง (AI, IoT, 4G, ADAS) แต่ละอันที่ติ๊ก
-//     เป็นเงื่อนไข "และ" เพิ่มอีกชั้น (ติ๊ก AI + IoT = ต้องมีทั้งคู่)
-// สถานะเก็บลง URL (?category_ids=…&tags=…) เพื่อให้ก๊อปลิงก์ส่งต่อ
-// หรือรีเฟรชหน้าแล้วตัวกรองยังอยู่ — ใช้ router.replace ไม่ใช่ push โดยตั้งใจ
-// ไม่งั้นติ๊ก 5 อันแล้วต้องกดย้อนกลับ 5 ครั้งกว่าจะออกจากหน้านี้
+// ตัวกรอง: หลายหมวด = "หรือ" · หลายแท็ก = "และ" · เก็บใน URL ด้วย router.replace (ไม่ให้ย้อนกลับทีละติ๊ก)
 type Facet = { category_id: string; category_name: string; count: number }
 type TagFacet = { tag: string; label: string; count: number }
 
@@ -52,19 +44,17 @@ const parseIds = (value: unknown) => String(value ?? '').split(',').map((s) => s
 
 const categoryFacets = ref<Facet[]>([])
 const tagFacets = ref<TagFacet[]>([])
-// ?category_id= ค่าเดียวจากลิงก์การ์ดหมวดหมู่หน้าแรก/ลิงก์เก่ายังใช้ได้เหมือนเดิม
+// ?category_id= ค่าเดียว (ลิงก์การ์ดหมวดหมู่/ลิงก์เก่า) ยังใช้ได้
 const selectedCategoryIds = ref<string[]>(
   parseIds(route.query.category_ids ?? route.query.category_id),
 )
 const selectedTags = ref<string[]>(parseIds(route.query.tags))
 const tagQuery = ref('')
-// ย่อ/กางแผงได้ทุกขนาดจอ (11 ก.ย. 2026 — เดิมพับได้เฉพาะจอเล็ก) และจำค่าที่เลือกไว้ในเครื่อง
-// ยังไม่เคยเลือก = จอเล็กพับไว้ก่อน (ชิปกินพื้นที่ทั้งจอจนไม่เห็นสินค้า) จอ md ขึ้นไปกางไว้
+// แผงตัวกรองย่อ/กางได้ จำค่าในเครื่อง · ยังไม่เคยเลือก = จอเล็กย่อ จอใหญ่กาง
 const FILTERS_OPEN_KEY = 'products_filters_open'
+// ค่าเริ่มต้นของแผงตัวกรอง
 function initialFiltersOpen() {
-  // กดการ์ดหมวดหมู่มาจากหน้าแรก = ย่อไว้เสมอ (ผู้ใช้เลือกหมวดมาแล้ว อยากเห็นสินค้าก่อน)
-  // HomePage ส่ง history state มาเอง — ไม่เช็คจาก ?category_id= เพราะ breadcrumb หน้าสินค้าก็ใช้ URL เดียวกัน
-  // ไม่บันทึกลง localStorage (watch ไม่ยิงกับค่าเริ่มต้น) ค่าที่ผู้ใช้เลือกเองจึงไม่ถูกทับ
+  // มาจากการ์ดหมวดหมู่หน้าแรก (history state) = ย่อไว้เสมอ ไม่บันทึกทับค่าที่ผู้ใช้เลือก
   if (window.history.state?.collapseFilters) return false
   try {
     const saved = localStorage.getItem(FILTERS_OPEN_KEY)
@@ -77,8 +67,6 @@ watch(filtersOpen, (open) => {
   try { localStorage.setItem(FILTERS_OPEN_KEY, open ? '1' : '0') } catch { /* ไม่จำก็ไม่เป็นไร */ }
 })
 const showAllTags = ref(false)
-// ตอนนี้มี 18 แท็ก โชว์ได้หมดใน 2 แถว — ปุ่มกาง/ย่อกับช่องค้นหาจะโผล่มาเองเมื่อ
-// คลังแท็กโตเกินนี้ ไม่ต้องมีปุ่ม "แสดงเพิ่มอีก 2 รายการ" ที่ไม่คุ้มจะกด
 const TAGS_COLLAPSED = 24
 
 const sort = ref('relevance')
@@ -89,11 +77,7 @@ const activeFilterCount = computed(() => selectedCategoryIds.value.length + sele
 
 const isTagSelected = (tag: string) => selectedTags.value.some((t) => t.toLowerCase() === tag.toLowerCase())
 
-// ลำดับชิปคงที่เสมอ (เรียงตามจำนวนสินค้า) — ห้ามดันตัวที่เลือกขึ้นหัวแถว
-// เพราะชิปที่เพิ่งกดจะกระโดดไปอยู่คนละที่ แล้วตัวอื่นเลื่อนตามทั้งแถว
-// กดต่อทีละอันไม่ได้เลย ต้องไล่หาใหม่ทุกครั้ง
-// ตอนย่อรายการ ตัวที่เลือกไว้แต่ตกขอบจะถูกต่อท้ายให้ (ไม่ได้สลับที่ตัวอื่น)
-// เพื่อไม่ให้ติ๊กไว้แล้วมองไม่เห็นว่าติ๊กอะไรอยู่
+// ลำดับชิปคงที่ (ตามจำนวนสินค้า) — ห้ามดันตัวที่เลือกขึ้นหน้า ไม่งั้นชิปกระโดด
 const visibleTags = computed(() => {
   const q = tagQuery.value.trim().toLowerCase()
   const matched = q ? tagFacets.value.filter((t) => t.label.toLowerCase().includes(q)) : tagFacets.value
@@ -107,7 +91,7 @@ const hiddenTagCount = computed(() =>
   tagQuery.value.trim() ? 0 : Math.max(0, tagFacets.value.length - TAGS_COLLAPSED),
 )
 
-// ตัวที่ติ๊กไว้ แสดงเป็นชิปตอนย่อแผง — ย่อแล้วต้องยังเห็นว่ากรองอะไรอยู่ และเอาออกได้ทีละอัน
+// ตัวที่ติ๊กไว้ แสดงเป็นชิปตอนย่อแผง
 const selectedChips = computed(() => [
   ...selectedCategoryIds.value.map((id) => ({
     key: `category:${id}`,
@@ -121,6 +105,7 @@ const selectedChips = computed(() => [
   })),
 ])
 
+// ติ๊ก/ถอนติ๊กค่าในรายการ แล้วเขียนลง URL
 function toggleIn(list: { value: string[] }, id: string) {
   const i = list.value.indexOf(id)
   if (i >= 0) list.value.splice(i, 1)
@@ -128,6 +113,7 @@ function toggleIn(list: { value: string[] }, id: string) {
   syncQuery()
 }
 
+// ล้างตัวกรองทั้งหมด
 function clearFilters() {
   if (activeFilterCount.value === 0) return
   selectedCategoryIds.value = []
@@ -135,8 +121,7 @@ function clearFilters() {
   syncQuery()
 }
 
-// เขียนตัวกรองกลับลง URL แล้วให้ watcher ของ route เป็นคนสั่งโหลด — ทางเดียว
-// ไม่เรียก load() ตรงนี้ด้วย กัน request ซ้อนสองชุดต่อการติ๊กหนึ่งครั้ง
+// เขียนตัวกรองลง URL แล้วให้ watcher ของ route โหลด (ทางเดียว กันคำขอซ้อน)
 function syncQuery() {
   page.value = 1
   router.replace({
@@ -159,6 +144,7 @@ onMounted(() => {
     .catch(() => {})
 })
 
+// โหลดสินค้า: มีคำค้น = /search · ไม่มี = /products
 function load() {
   const searchword = String(route.query.searchword ?? '')
   const hasQuery = searchword.trim().length > 0
@@ -168,8 +154,6 @@ function load() {
   searchedAs.value = null
 
   if (!hasQuery) {
-    // No search term yet — show the full product list instead, still
-    // honoring the category/sort filters.
     productAPI
       .list({
         page: page.value,
@@ -208,14 +192,12 @@ function load() {
     .finally(() => { loading.value = false; hasLoaded.value = true })
 }
 
-// เลขหน้าสำหรับตัวแบ่งหน้าด้านล่าง — โชว์หน้าแรก/หน้าสุดท้ายเสมอ พร้อมหน้ารอบๆ
-// หน้าปัจจุบัน ที่เหลือย่อเป็นจุดไข่ปลา เพื่อไม่ให้แถวยาวเกินเมื่อสินค้าเยอะขึ้น
+// เลขหน้า: หน้าแรก/สุดท้าย + หน้ารอบๆ ที่เหลือเป็น …
 const pageNumbers = computed<(number | '...')[]>(() => {
   const last = totalPages.value
   const current = page.value
   if (last <= 7) return Array.from({ length: last }, (_, i) => i + 1)
   const around = new Set<number>([1, last, current, current - 1, current + 1])
-  // หน้าแรก/หน้าสุดท้ายให้เห็นเพื่อนบ้านด้วย ไม่งั้นจะได้ "1 … 3" ที่กระโดดไปแค่หน้าเดียว
   if (current <= 3) [2, 3, 4].forEach((n) => around.add(n))
   if (current >= last - 2) [last - 3, last - 2, last - 1].forEach((n) => around.add(n))
   const pages = [...around].filter((n) => n >= 1 && n <= last).sort((a, b) => a - b)
@@ -238,10 +220,7 @@ onMounted(load)
 watch(() => route.query.searchword, () => { page.value = 1; load() })
 watch(sort, () => { page.value = 1; load() })
 
-// ตัวกรองทั้งหมดอยู่ใน URL — โหลดใหม่เมื่อ URL เปลี่ยน ไม่ว่าจะมาจากการติ๊ก
-// (syncQuery) หรือจากลิงก์ภายในที่เข้ามาที่หน้านี้พร้อมตัวกรองติดมาด้วย
-// (เช่น การ์ดหมวดหมู่หน้าแรกที่ส่ง ?category_id= มา) — อ่านค่ากลับเข้า state
-// ให้ตรงกันเสมอ ไม่งั้น state เดิมจะค้างไม่ตรงกับที่ URL บอก
+// URL เปลี่ยน → อ่านตัวกรองกลับเข้า state แล้วโหลดใหม่
 watch(
   () => [route.query.category_ids, route.query.category_id, route.query.tags],
   () => {
@@ -254,12 +233,9 @@ watch(
   },
 )
 
-// Breadcrumb: Home > selected category (if any, links back to a plain
-// category browse) > current page label.
+// breadcrumb: หน้าแรก > หมวด (ถ้าติ๊กหมวดเดียว) > หน้านี้
 const breadcrumbItems = computed(() => {
   const items: { label: string; to?: string }[] = [{ label: langs('navHome'), to: '/' }]
-  // แสดงชื่อหมวดใน breadcrumb เฉพาะตอนติ๊กหมวดเดียว — ติ๊กหลายหมวดแล้วไม่มี
-  // "หมวดปัจจุบัน" ให้ชี้ ตัวแผงตัวกรองบอกอยู่แล้วว่าเลือกอะไรไว้บ้าง
   const cat = selectedCategoryIds.value.length === 1
     ? categoryFacets.value.find((c) => String(c.category_id) === selectedCategoryIds.value[0])
     : null
@@ -273,9 +249,7 @@ const breadcrumbItems = computed(() => {
   <div class="space-y-4">
     <Breadcrumb :items="breadcrumbItems" />
 
-    <!-- min-h เท่าความสูงปุ่มแบ่งหน้า (32px) — กรองแล้วเหลือหน้าเดียวปุ่มจะหายไป
-         ถ้าไม่ล็อกความสูงไว้ แถวนี้จะเตี้ยลงแล้วดึงแผงตัวกรองข้างล่างขยับตามทุกครั้ง
-         ที่กดชิป -->
+    <!-- min-h เท่าปุ่มแบ่งหน้า กันแถวยุบตอนเหลือหน้าเดียว -->
     <div class="flex items-center justify-between gap-4 flex-wrap min-h-8">
       <h1 class="text-lg font-semibold">
         <template v-if="route.query.searchword">
@@ -310,9 +284,7 @@ const breadcrumbItems = computed(() => {
       </div>
     </div>
 
-    <!-- กู้แป้นพิมพ์ผิด: บอกให้ชัดว่าผลที่เห็นมาจากคำไหน ไม่งั้นผู้ใช้พิมพ์ "เยห"
-         แล้วเจอสินค้า GPS เต็มหน้าจะงงว่าระบบไปเอามาจากไหน
-         role=status ให้โปรแกรมอ่านหน้าจอประกาศเองโดยไม่ต้องย้ายโฟกัส -->
+    <!-- บอกว่าผลมาจากคำที่กู้แป้นให้ -->
     <p
       v-if="searchedAs"
       role="status"
@@ -325,22 +297,15 @@ const breadcrumbItems = computed(() => {
     <hr class="border-gray-200" />
 
     <section class="rounded-xl border bg-white overflow-hidden" aria-labelledby="product-filters-heading">
-      <!-- เส้นใต้หัวแผงมีเฉพาะตอนมีเนื้อหาข้างล่าง ไม่งั้นย่อแล้วจะเห็นเส้นซ้อนกับขอบกรอบ
-           ลำดับบนจอ: มือถือ = [ชื่อแผง+จำนวน | ปุ่มซ่อน] แล้วแถวล่าง [ล้าง | เรียง]
-                      จอ sm ขึ้นไป = [ชื่อแผง+จำนวน ... ล้าง | เรียง | ปุ่มซ่อน] แถวเดียว
-           ลำดับใน DOM ตรงกับจอใหญ่ (ลำดับ Tab ของคีย์บอร์ด) มือถือใช้ order สลับตำแหน่ง -->
+      <!-- มือถือใช้ order สลับตำแหน่ง แต่ลำดับใน DOM ตรงจอใหญ่ (ลำดับ Tab) -->
       <div
         class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 bg-gray-50"
         :class="(filtersOpen || selectedChips.length > 0) && 'border-b'"
       >
-        <!-- flex-wrap: จอแคบมาก (≤360px) จำนวนรายการตกลงบรรทัดใหม่ใต้ชื่อแผง แทนที่จะล้นทับปุ่มซ่อน -->
         <div class="order-1 flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <SlidersHorizontal class="w-4 h-4 shrink-0 text-brand-700" aria-hidden="true" />
           <h2 id="product-filters-heading" class="text-[15px] font-semibold text-navy-900 whitespace-nowrap">{{ langs('filtersHeading') }}</h2>
-          <!-- บอกผลทันทีว่าติ๊กแล้วเหลือกี่รายการ ไม่ต้องเลื่อนลงไปนับเอง
-               role=status ให้ screen reader อ่านผลลัพธ์ใหม่เองโดยไม่ย้ายโฟกัส
-               (ประกาศเป็นประโยคเต็ม "พบ 10 รายการ" ไม่ใช่เลขลอยๆ)
-               ค้างค่าเดิมไว้ระหว่างโหลด ไม่ซ่อน — ซ่อนแล้วจะกะพริบทุกครั้งที่กดชิป -->
+          <!-- จำนวนผลลัพธ์ (role=status ให้ screen reader อ่าน) ค้างค่าเดิมระหว่างโหลดไม่ให้กะพริบ -->
           <span v-if="hasLoaded" class="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap">
             <span class="hidden sm:inline text-gray-300" aria-hidden="true">·</span>
             <span role="status" aria-atomic="true" class="tabular-nums">{{ langs('filtersResultCount', { n: total }) }}</span>
@@ -349,8 +314,7 @@ const breadcrumbItems = computed(() => {
         </div>
 
         <div class="order-3 sm:order-2 w-full sm:w-auto flex items-center justify-between sm:justify-end gap-3">
-          <!-- จองที่ไว้เสมอ (invisible ไม่ใช่ v-if) ไม่งั้นดรอปดาวน์เรียงลำดับ
-               จะเลื่อนไปมาทุกครั้งที่ติ๊กตัวกรองอันแรก/ล้างอันสุดท้าย -->
+          <!-- invisible ไม่ใช่ v-if — จองที่ไว้ ไม่ให้ dropdown เรียงลำดับขยับ -->
           <button
             type="button"
             @click="clearFilters"
@@ -364,7 +328,7 @@ const breadcrumbItems = computed(() => {
           <span class="hidden sm:block h-4 w-px bg-gray-300" :class="activeFilterCount > 0 ? '' : 'invisible'" aria-hidden="true"></span>
           <label class="flex items-center gap-2 text-sm text-gray-600">
             <span class="hidden sm:inline whitespace-nowrap">{{ langs('sortByLabel') }}</span>
-            <!-- aria-label เพราะจอเล็กซ่อนข้อความ "เรียงตาม" ไว้ ไม่งั้น select ไม่มีชื่อ (axe select-name) -->
+            <!-- aria-label เพราะจอเล็กซ่อนข้อความ "เรียงตาม" -->
             <select v-model="sort" :aria-label="langs('sortByLabel')" class="border rounded-lg px-3 py-1.5 text-sm text-navy-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
               <option value="relevance">{{ langs('sortRelevance') }}</option>
               <option value="price_asc">{{ langs('sortPriceAsc') }}</option>
@@ -390,7 +354,6 @@ const breadcrumbItems = computed(() => {
         </button>
       </div>
 
-      <!-- ย่อแผงอยู่ = แสดงเฉพาะตัวที่ติ๊กไว้ ยังเห็นว่ากรองอะไรอยู่ และเอาออกได้ทีละอัน -->
       <div
         v-if="!filtersOpen && selectedChips.length > 0"
         class="flex flex-wrap gap-1.5 px-4 py-3"
@@ -413,8 +376,6 @@ const breadcrumbItems = computed(() => {
       </div>
 
       <div id="product-filters" v-show="filtersOpen" class="divide-y divide-gray-100">
-        <!-- หมวดหมู่ — ติ๊กหลายอัน = "หรือ" ผลลัพธ์กว้างขึ้น
-             sm:pt-1.5 ให้ชื่อกลุ่มตรงแนวข้อความในชิปแถวแรก (ชิปสูง 32px ข้อความ 20px) -->
         <div class="px-4 py-3 sm:grid sm:grid-cols-[6.5rem_1fr] sm:gap-4">
           <h3 class="mb-2 sm:mb-0 sm:pt-1.5 text-[13px] font-medium text-gray-600">{{ langs('filterCategoryGroup') }}</h3>
           <div class="flex flex-wrap gap-1.5">
@@ -438,8 +399,6 @@ const breadcrumbItems = computed(() => {
           </div>
         </div>
 
-        <!-- แท็ก — คำสั้นๆ ที่คนเรียกกันจริง แต่ละอันที่ติ๊กเป็นเงื่อนไข "และ"
-             เพิ่มอีกชั้น ผลลัพธ์แคบลง — คำอธิบายนี้อยู่ใต้ชิป ไม่ใช่ต่อท้ายชื่อกลุ่ม -->
         <div class="px-4 py-3 sm:grid sm:grid-cols-[6.5rem_1fr] sm:gap-4">
           <h3 class="mb-2 sm:mb-0 sm:pt-1.5 text-[13px] font-medium text-gray-600">{{ langs('filterTagGroup') }}</h3>
           <div class="space-y-2">
@@ -496,10 +455,7 @@ const breadcrumbItems = computed(() => {
 
     <div v-if="!loading && !error && products.length === 0 && route.query.searchword" class="text-center text-gray-500 py-10 space-y-2">
       <p>{{ langs('noResultsFound') }}</p>
-      <!-- คงหน้าตาข้อความคั่นจุลภาคแบบเดิมไว้ แต่ชื่อสินค้าเป็นลิงก์ กดแล้วเข้าหน้า
-           รายละเอียดเลย ไม่ต้องพิมพ์ค้นใหม่ — จุลภาคอยู่นอกลิงก์ ไม่งั้นจะกลายเป็น
-           ส่วนหนึ่งของพื้นที่กดและของข้อความที่ screen reader อ่านออกมา
-           brand-700 บนพื้นขาวได้ 4.97:1 ผ่าน AA (brand-600 ได้แค่ 3.43:1) -->
+      <!-- ชื่อสินค้าเป็นลิงก์ จุลภาคอยู่นอกลิงก์ -->
       <p v-if="suggestions.length > 0">
         {{ langs('didYouMean') }}
         <template v-for="(s, i) in suggestions" :key="s.product_id">
@@ -509,7 +465,6 @@ const breadcrumbItems = computed(() => {
           >{{ s.product_name }}</RouterLink><span v-if="i < suggestions.length - 1">, </span>
         </template>
       </p>
-      <!-- ทางออกจากหน้าว่าง: ออกจากโหมดค้นหา (คงตัวกรองไว้) หรือล้างตัวกรองที่อาจตัดผลทิ้ง -->
       <div class="flex flex-wrap justify-center gap-2 pt-2">
         <RouterLink :to="{ path: '/products', query: { ...route.query, searchword: undefined } }" class="inline-flex items-center rounded-full bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">
           {{ langs('viewAllProducts') }}
@@ -520,8 +475,6 @@ const breadcrumbItems = computed(() => {
       </div>
     </div>
 
-    <!-- ไม่มีคำค้น: ติ๊กตัวกรองจนไม่เหลืออะไร = บอกเหตุและให้ปุ่มล้างตัวกรอง
-         ส่วน "ยังไม่มีสินค้าในระบบ" จริงๆ ไม่มีทางแก้จากหน้านี้ จึงเป็นข้อความเฉยๆ -->
     <div v-if="!loading && !error && products.length === 0 && !route.query.searchword && activeFilterCount > 0" class="text-center text-gray-500 py-10 space-y-3">
       <p>{{ langs('noFilterMatch') }}</p>
       <button type="button" class="inline-flex items-center rounded-full bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2" @click="clearFilters">{{ langs('filtersClear') }}</button>
@@ -532,10 +485,7 @@ const breadcrumbItems = computed(() => {
 
     <h2 class="sr-only">{{ langs('productListHeading') }}</h2>
 
-    <!-- โหลดครั้งแรก (ยังไม่มีสินค้าให้แสดงเลย) = โครงร่างการ์ด ไม่ใช่ข้อความ
-         "กำลังโหลด" — จำนวนเท่ากับที่ขอมาต่อหน้า หน้าจึงไม่กระโดดตอนของจริงมาถึง;
-         ถ้ามีสินค้าอยู่แล้วแล้วเปลี่ยนตัวกรอง/หน้า ยังใช้วิธีหรี่ของเดิมไว้เหมือนเดิม
-         (เห็นบริบทเดิมค้างไว้ระหว่างรอ ดีกว่าโดนโครงร่างแทนที่ทั้งกริด) -->
+    <!-- โหลดครั้งแรก = โครงร่างการ์ด · โหลดครั้งต่อไป = หรี่ของเดิมไว้ -->
     <div v-if="loading && products.length === 0" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4" role="status" :aria-label="langs('loadingProducts')">
       <ProductCardSkeleton v-for="n in 12" :key="n" />
     </div>
@@ -549,7 +499,6 @@ const breadcrumbItems = computed(() => {
       <ProductCard v-for="p in products" :key="p.product_id" :product="p" :query="String(route.query.searchword ?? '')" />
     </div>
 
-    <!-- ตัวแบ่งหน้าด้านล่าง — เลขหน้าเต็มพร้อมจุดไข่ปลา (ด้านบนเป็นแบบย่อ ลูกศรอย่างเดียว) -->
     <nav v-if="totalPages > 1 && !loading" class="flex items-center justify-center gap-1.5 pt-2" :aria-label="langs('paginationPageOf', { page, total: totalPages })">
       <button
         type="button"

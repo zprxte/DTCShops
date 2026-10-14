@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// จัดการสาขา DTC Shop
 import { onMounted, ref } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { Plus, SquarePen, Trash2 } from 'lucide-vue-next'

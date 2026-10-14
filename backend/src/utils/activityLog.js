@@ -1,24 +1,15 @@
-// เขียนบันทึกกิจกรรมลง tbl_logs — ตารางเดียวกับที่ dtcshops.com ของจริงใช้
-// (restore มาพร้อมดัมป์ มีข้อมูลจริง 39,395 แถวถึง 3 ส.ค. 2026) ไม่ได้สร้าง
-// ตารางใหม่ของโปรเจกต์นี้เอง จึงต้องเขียนให้รูปแบบ message/type/page ตรงกับ
-// ของเดิมทุกประการ ไม่งั้นสถิติเก่ากับใหม่จะรวมกันไม่ได้
-//
-// รูปแบบที่ข้อมูลจริงใช้ (ห้ามเปลี่ยน):
-//   type='view'  page='product-single'  message='การเข้าดูสินค้า : <slug>'
-//   type='view'  page='pge-0000001'     message='การเข้าดูหน้าเพจ: <page>'
-//
-// ทุกฟังก์ชันในไฟล์นี้ "ห้ามพัง request หลัก" — การบันทึก log ล้มเหลวไม่ควร
-// ทำให้ผู้ใช้เปิดหน้าสินค้าไม่ได้ จึง catch ทุก error แล้วปล่อยผ่าน
+// เขียนสถิติเข้าชมลง tbl_logs รูปแบบเดียวกับเว็บจริงเป๊ะ (ห้ามเปลี่ยน ไม่งั้นรวมกับข้อมูลเก่าไม่ได้) · ล้มเงียบ ไม่พัง request หลัก
 
 const PRODUCT_VIEW_PAGE = 'product-single'
 
-// ตัดความยาวให้พอดีคอลัมน์จริง (VARCHAR ตามตารางต้นทาง) กันเขียนไม่ลง
+// ตัดความยาวให้พอดีคอลัมน์ VARCHAR
 function clamp(value, max) {
   if (value === null || value === undefined) return null
   const text = String(value)
   return text.length > max ? text.slice(0, max) : text
 }
 
+// เขียน 1 แถวลง tbl_logs (error = ข้าม)
 async function writeLog(prisma, { type, page, message, user_id }) {
   try {
     await prisma.tbl_logs.create({
@@ -35,8 +26,7 @@ async function writeLog(prisma, { type, page, message, user_id }) {
   }
 }
 
-// เข้าดูหน้าสินค้า — ใช้ slug เป็นตัวระบุสินค้าเหมือนข้อมูลจริง (ไม่ใช่ itm_code)
-// เพราะแดชบอร์ดต้อง join ข้อมูลเก่ากับใหม่เข้าด้วยกันได้
+// บันทึกการเข้าดูสินค้า — ใช้ slug เป็นตัวระบุเหมือนข้อมูลจริง
 function logProductView(prisma, product) {
   const key = product?.slug || product?.itm_code
   if (!key) return
@@ -47,8 +37,7 @@ function logProductView(prisma, product) {
   })
 }
 
-// เข้าดูหน้าเพจทั่วไป (หน้าแรก/ค้นหา/เปรียบเทียบ) — หน้าสินค้าไม่ผ่านทางนี้
-// เพราะ backend บันทึกให้เองแล้วตอนดึงข้อมูลสินค้า
+// บันทึกการเข้าดูหน้าเพจ (หน้าแรก/สินค้า/เปรียบเทียบ)
 function logPageView(prisma, page) {
   if (!page) return
   return writeLog(prisma, {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// หน้ารายละเอียดสินค้า: แกลเลอรี โมเดล ตัวเลือกเสริม ราคา ปุ่มสั่งซื้อ แชร์ สเปค สินค้าที่เกี่ยวข้อง
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { GitCompare, Check, Play, ChevronLeft, ChevronRight, Minus, Plus, Mail, Link2 } from 'lucide-vue-next'
@@ -22,6 +23,7 @@ const error = ref<string | null>(null)
 const activeImage = ref<string | null>(null)
 const activeMedia = ref<'image' | 'video'>('image')
 
+// โหลดสินค้าตาม slug ใน URL
 function load() {
   const identifier = String(route.params.slug ?? '')
   if (!identifier) {
@@ -36,7 +38,7 @@ function load() {
     .getById(identifier)
     .then((res) => {
       product.value = res.data
-      // ชื่อแท็บ = ชื่อสินค้า (เช็คว่ายังอยู่หน้าสินค้าตัวนี้ ไม่ให้ผลที่ตอบช้ามาทับชื่อสินค้าตัวใหม่)
+      // ชื่อแท็บ = ชื่อสินค้า (เช็คว่ายังอยู่สินค้าตัวนี้ ไม่ให้ผลที่ตอบช้ามาทับ)
       if (identifier === String(route.params.slug ?? '')) pageTitleOverride.value = res.data.product_name
       activeImage.value = res.data.product_gallery?.[0]?.product_image ?? null
       activeMedia.value = 'image'
@@ -45,8 +47,7 @@ function load() {
     })
     .catch(() => { error.value = langs('productLoadError') })
     .finally(() => {
-      // เหมือน HomePage.vue's "สินค้าแนะนำ" — loading ต้องเป็น false ก่อน
-      // ถึงจะเรียก nextTick ได้ เพราะ track div ยังไม่ mount ตอน loading=true
+      // ต้องรอ loading = false ก่อน รางสินค้าถึงจะ mount ให้วัดได้
       loading.value = false
       nextTick(() => {
         updateGalleryScrollState()
@@ -70,12 +71,9 @@ const effectiveAttributes = computed<ProductAttributeValue[]>(() => {
   return [...base.filter((b) => !overrideNames.has(b.attribute.attribute_name)), ...overrides]
 })
 
-// ตัวเลือกสินค้า / ของเสริมที่ซื้อเพิ่มได้ (tbl_item_option) — เลือกได้ทีละตัว
-// (คำขอผู้ใช้ 2026-09-09) ราคาที่เพิ่มถูกบวกเข้ากับราคาสินค้าที่แสดงด้านบนเลย
-// ไม่แยกบรรทัดรวมยอด จะได้เห็นชัดว่าเลือกแล้วจ่ายเท่าไร; เป็นการแสดงผลอย่างเดียว
-// ระบบนี้ไม่มีตะกร้าสั่งซื้อจริง และตัวเลือกไม่ถูกส่งเข้าตารางเปรียบเทียบ
+// ตัวเลือกเสริม เลือกได้ทีละตัว ราคาบวกเข้าราคาที่แสดงเลย (แสดงผลอย่างเดียว ไม่มีตะกร้า)
 const selectedOptionId = ref<string | null>(null)
-// กดตัวที่เลือกอยู่ซ้ำ = ยกเลิกการเลือก (radio ปกติยกเลิกเองไม่ได้ ต้องดักที่ @click)
+// กดตัวที่เลือกอยู่ซ้ำ = ยกเลิก
 function selectOption(optionId: string) {
   selectedOptionId.value = selectedOptionId.value === optionId ? null : optionId
 }
@@ -83,24 +81,20 @@ const selectedOption = computed(() =>
   product.value?.product_option?.find((option) => option.option_id === selectedOptionId.value) ?? null
 )
 const optionAddon = computed(() => Number(selectedOption.value?.addon_price ?? 0))
-// ราคาที่โชว์ในกล่องราคาด้านบน = ราคาโมเดลที่เลือก + ราคาตัวเลือกที่เลือก
-// ราคาฐานเป็น 0 = "ติดต่อสอบถาม" → คงเป็น 0 ไม่ว่าเลือกตัวเลือกราคาเท่าไร
-// (ไม่งั้นจะโชว์แค่ราคาตัวเลือกเหมือนเป็นราคาสินค้า, คำขอผู้ใช้ 15 ก.ย. 2026)
+// ราคาที่แสดง = ราคาโมเดล + ตัวเลือก · ราคาฐาน 0 = ติดต่อสอบถามเสมอ
 const hasBasePrice = computed(() => Number(effectivePrice.value ?? 0) > 0)
 
-// สินค้าหมวด Software ขายแบบสมัครสมาชิก คิดราคาต่อผู้ใช้ต่อเดือน ไม่ใช่ต่อชิ้น
-// (คำขอผู้ใช้ 25 ก.ย. 2026) · tbl_item ไม่มีคอลัมน์หน่วยราคา จึงดูจากรหัสหมวดแทน
+// หมวด Software ขายรายเดือน (ดูจากรหัสหมวด เพราะ tbl_item ไม่มีคอลัมน์หน่วย)
 const SUBSCRIPTION_CATEGORY_ID = 'PT-00006'
 const isSubscription = computed(() => product.value?.category?.category_id === SUBSCRIPTION_CATEGORY_ID)
 const displayPrice = computed(() => (hasBasePrice.value ? Number(effectivePrice.value) + optionAddon.value : 0))
 
-//ตรรกะการตรวจสอบว่าสินค้านี้อยู่ในรายการเปรียบเทียบแล้วหรือไม่
-//ถ้ามีการเลือกรุ่นสินค้า (selectedModelId) จะตรวจสอบเฉพาะรุ่นนั้น
-//ถ้าไม่ได้เลือกรุ่น (selectedModelId เป็น null) จะตรวจสอบทั้งสินค้า
+// อยู่ในตารางเปรียบเทียบแล้วไหม (เลือกโมเดลอยู่ = เช็คเฉพาะโมเดลนั้น)
 const inCompare = computed(() =>
   product.value ? compareStore.isExactInCompare(product.value.product_id, selectedModelId.value) : false
 )
 
+// เพิ่ม/เอาออกจากตารางเปรียบเทียบ (พร้อมโมเดลที่เลือก)
 function toggleCompare() {
   if (!product.value) return
   if (inCompare.value) {
@@ -116,8 +110,7 @@ function toggleCompare() {
   }
 }
 
-// แชร์หน้าสินค้า — Facebook/Line ผ่าน share-intent URL, อีเมลผ่าน mailto,
-// คัดลอกลิงก์ (แพทเทิร์นเดียวกับ ComparePage.vue's shareCompareLink)
+// ลิงก์แชร์ Facebook / LINE / อีเมล / คัดลอกลิงก์
 const facebookShareUrl = computed(
   () => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`
 )
@@ -133,7 +126,7 @@ function copyProductLink() {
 
 const galleryImages = computed(() => product.value?.product_gallery?.map((g) => g.product_image) ?? [])
 
-// Product video (admin's "วิดีโอสินค้า" field, itm_video_master)
+// วิดีโอสินค้า (YouTube)
 const youtubeId = computed(() => {
   const url = product.value?.video_url
   if (!url) return null
@@ -143,19 +136,20 @@ const youtubeId = computed(() => {
 const videoThumbnail = computed(() => (youtubeId.value ? `https://img.youtube.com/vi/${youtubeId.value}/hqdefault.jpg` : null))
 const videoEmbedUrl = computed(() => (youtubeId.value ? `https://www.youtube.com/embed/${youtubeId.value}` : null))
 
+// แสดงรูปในกรอบหลัก
 function showImage(img: string) {
   activeImage.value = img
   activeMedia.value = 'image'
 }
+// แสดงวิดีโอในกรอบหลัก
 function showVideo() {
   activeMedia.value = 'video'
 }
 
-// จำนวนรูปย่อทั้งหมด (รูปภาพ + วิดีโอ ถ้ามี) ไว้ใช้คำนวณแคโรเซล
+// จำนวนรูปย่อ (รูป + วิดีโอ)
 const galleryThumbCount = computed(() => galleryImages.value.length + (videoThumbnail.value ? 1 : 0))
 
-// แคโรเซลแถบรูปย่อ — โครงสร้างเดียวกับ HomePage.vue's "สินค้าแนะนำ" (ปุ่มลูกศร
-// วงกลมลอย + จุดไล่ตำแหน่งด้านล่าง) เห็นทีละ 4 ชิ้น
+// รางรูปย่อ — แบบเดียวกับรางสินค้าแนะนำหน้าแรก (เห็นทีละ 4)
 const galleryTrack = ref<HTMLElement | null>(null)
 const canScrollGalleryLeft = ref(false)
 const canScrollGalleryRight = ref(false)
@@ -163,7 +157,7 @@ const galleryActiveIndex = ref(0)
 
 function galleryCardStep(el: HTMLElement) {
   const card = el.firstElementChild as HTMLElement | null
-  return (card?.offsetWidth ?? el.clientWidth / 4) + 8 // + gap-2
+  return (card?.offsetWidth ?? el.clientWidth / 4) + 8
 }
 
 function updateGalleryScrollState() {
@@ -199,7 +193,7 @@ function scrollGalleryToIndex(i: number) {
 const numGalleryDots = computed(() => Math.max(1, galleryThumbCount.value - 3))
 const activeGalleryDot = computed(() => Math.min(galleryActiveIndex.value, numGalleryDots.value - 1))
 
-// ตัวเลือกจำนวนสินค้า — เป็นแค่ตัวเลขแสดงผลบนหน้าเว็บเท่านั้น ระบบนี้ไม่มีตะกร้าสั่งซื้อ/checkout จริง
+// ตัวเลือกจำนวน — แสดงผลอย่างเดียว ไม่มีตะกร้า
 const quantity = ref(1)
 function decreaseQuantity() {
   if (quantity.value > 1) quantity.value -= 1
@@ -208,18 +202,17 @@ function increaseQuantity() {
   quantity.value += 1
 }
 
-// แปลงราคาเป็นข้อความรูปแบบ ฿x,xxx
+// ราคา → ฿x,xxx
 function formatPrice(value: number | string) {
   return `฿${Number(value).toLocaleString()}`
 }
-// ช่วงราคาต่ำสุด-สูงสุด (จากราคาของแต่ละโมเดล) แสดงเป็นราคาขีดฆ่าคู่กับราคาปัจจุบัน
+// ช่วงราคาของโมเดล (แสดงขีดฆ่าคู่ราคาปัจจุบัน)
 const priceRangeText = computed(() => {
   if (!product.value || product.value.product_price == null || product.value.product_price_max == null) return null
   return `${formatPrice(product.value.product_price)}-${formatPrice(product.value.product_price_max)}`
 })
 
-// แคโรเซล "สินค้าที่เกี่ยวข้อง" — โครงสร้างเดียวกับ HomePage.vue's "สินค้าแนะนำ"
-// (ปุ่มลูกศรวงกลมลอย + จุดไล่ตำแหน่งด้านล่าง) เห็นทีละ 4 ชิ้นบนจอกว้าง
+// รางสินค้าที่เกี่ยวข้อง — แบบเดียวกับรางสินค้าแนะนำหน้าแรก
 const relatedTrack = ref<HTMLElement | null>(null)
 const canScrollRelatedLeft = ref(false)
 const canScrollRelatedRight = ref(false)
@@ -227,7 +220,7 @@ const relatedActiveIndex = ref(0)
 
 function relatedCardStep(el: HTMLElement) {
   const card = el.firstElementChild as HTMLElement | null
-  return (card?.offsetWidth ?? el.clientWidth / 4) + 16 // + gap-4
+  return (card?.offsetWidth ?? el.clientWidth / 4) + 16
 }
 
 function updateRelatedScrollState() {
@@ -265,8 +258,7 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
 </script>
 
 <template>
-  <!-- โครงร่างหน้ารายละเอียดระหว่างโหลด — วางกรอบรูป/ชื่อ/ราคา/ปุ่ม ไว้ตำแหน่ง
-       เดียวกับของจริง เพื่อไม่ให้หน้ากระโดดตอนข้อมูลมาถึง -->
+  <!-- โครงร่างระหว่างโหลด วางตำแหน่งเท่าของจริง -->
   <div v-if="loading" class="space-y-6" role="status" :aria-label="langs('loading')">
     <SkeletonBox class="h-4 w-64" />
     <div class="grid md:grid-cols-2 gap-8 bg-white border rounded-2xl p-5 md:p-8">
@@ -316,8 +308,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           <img decoding="async" fetchpriority="high" v-else-if="activeImage" :src="resolveImageUrl(activeImage)" :alt="product.product_name" class="max-w-full max-h-full object-contain" />
           <span v-else class="text-gray-500">{{ langs('noImage') }}</span>
         </div>
-        <!-- แถบรูปย่อ — แคโรเซลแบบเดียวกับ "สินค้าแนะนำ" หน้าแรก: ปุ่มลูกศรวงกลมลอย
-             ทับขอบซ้าย/ขวา + เลื่อนดูทีละ 4 ชิ้น + จุดไล่ตำแหน่งด้านล่าง -->
         <div v-if="galleryThumbCount > 1" class="max-w-md mx-auto">
           <div class="relative">
             <button
@@ -347,7 +337,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
               >
                 <img loading="lazy" decoding="async" :src="resolveImageUrl(img)" alt="" class="w-full h-full object-contain bg-white p-1" />
               </button>
-              <!-- แสดงวิดีโอสินค้าเป็นรูปขนาดย่อถัดจากรูปภาพ -->
               <button
                 v-if="videoThumbnail"
                 @click="showVideo"
@@ -395,13 +384,11 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           {{ langs('soldCountLabel', { n: product.sold_count }) }}
         </p>
 
-        <!-- กล่องราคา: ราคาปัจจุบันแต่ละโมเดล -->
         <div class="bg-gray-50 rounded-lg px-4 py-3 flex items-baseline gap-3 flex-wrap">
           <span class="text-2xl text-brand-600 font-bold">
             {{ Number(displayPrice) ? formatPrice(displayPrice) : langs('priceOnRequest') }}
           </span>
           <span v-if="Number(displayPrice)" class="text-sm text-gray-500">{{ langs(isSubscription ? 'priceUnitSubscriptionLabel' : 'priceUnitLabel') }}</span>
-          <!-- แจกแจงให้เห็นว่าราคาที่เพิ่มมาจากตัวเลือกไหน -->
           <span v-if="optionAddon > 0 && hasBasePrice" class="w-full text-xs text-gray-500">
             {{ langs('priceWithOptionNote', {
               base: formatPrice(effectivePrice ?? 0),
@@ -411,7 +398,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </span>
         </div>
 
-        <!-- แถวข้อมูล ความคุ้มครอง/การจัดส่ง — เป็น metadata แสดงผลอย่างเดียว -->
         <dl v-if="product.warranty_text || product.shipping_text" class="text-sm grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
           <template v-if="product.warranty_text">
             <dt class="text-gray-500">{{ langs('warrantyRowLabel') }}</dt>
@@ -423,7 +409,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </template>
         </dl>
 
-        <!-- ส่วนเลือกดู model สินค้า -->
         <div v-if="product.product_model && product.product_model.length > 0" class="space-y-1.5">
           <p class="text-xs font-medium text-gray-500">{{ langs('modelSelectorLabel') }}</p>
           <div class="flex flex-wrap gap-2">
@@ -445,11 +430,8 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </div>
         </div>
 
-        <!-- ตัวเลือกสินค้า / ของเสริมที่ซื้อเพิ่มได้ — เลือกได้หลายรายการ -->
         <div v-if="product.product_option && product.product_option.length > 0" class="space-y-1.5">
           <p class="text-xs font-medium text-gray-500">{{ langs('addonOptionsLabel') }}</p>
-          <!-- ชิปเล็กๆ เรียงต่อกันแล้วขึ้นบรรทัดใหม่เอง (แบบเดียวกับปุ่มเลือก Model
-               ด้านบน) — ไม่ใช้แถวเต็มความกว้างเพราะกินพื้นที่เกินจำเป็น -->
           <div class="flex flex-wrap gap-2">
             <button
               v-for="option in product.product_option"
@@ -473,7 +455,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </div>
         </div>
 
-        <!-- ตัวเลือก/จำนวน — เป็นตัวเลขแสดงผลอย่างเดียว ระบบนี้ไม่มีตะกร้าสั่งซื้อ -->
         <div class="space-y-1.5">
           <div class="flex items-center gap-3 text-sm flex-wrap">
             <span class="text-gray-600">{{ langs('quantityLabel') }}</span>
@@ -503,10 +484,7 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </div>
         </div>
 
-        <!-- ปุ่มติดต่อสั่งซื้อผ่านช่องทางต่างๆ ตามลิงก์ที่แอดมินกรอกไว้ — โลโก้ของจริง
-             ดึงมาจาก dtcshops.com เอง (เก็บไฟล์ไว้ใน frontend/public/ ไม่ hotlink ตรง
-             เพราะ URL ต้นทางมี content-hash ที่เปลี่ยนทุกครั้งที่เขา deploy ใหม่ — แพทเทิร์น
-             เดียวกับ DTC_logo.png/footer-bg.png ที่เก็บไว้ในเครื่องเองอยู่แล้ว) -->
+        <!-- โลโก้ร้านเก็บไว้ใน public/ ไม่ hotlink (URL ต้นทางเปลี่ยนทุกครั้งที่เขา deploy) -->
         <div class="grid grid-cols-2 gap-3 pt-1">
           <a
             v-if="product.line_link"
@@ -550,7 +528,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
           </a>
         </div>
 
-        <!-- แชร์หน้าสินค้า -->
         <div class="flex items-center gap-2.5 pt-1">
           <span class="text-xs text-gray-500">{{ langs('shareLabel') }}</span>
           <a
@@ -590,7 +567,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
       </div>
     </div>
 
-    <!-- รายละเอียด + ตารางคุณสมบัติ อยู่ใต้กล่องรูปภาพ/ราคาด้านบน แยกเป็นคนละส่วน -->
     <div v-if="product.description || effectiveAttributes.length > 0" class="bg-white border rounded-2xl p-5 md:p-8 space-y-6">
       <div v-if="product.description">
         <h2 class="font-semibold mb-2">{{ langs('productDescriptionTitle') }}</h2>
@@ -618,7 +594,6 @@ const activeRelatedDot = computed(() => Math.min(relatedActiveIndex.value, numRe
         <h2 class="text-lg md:text-xl font-bold text-brand-700">{{ langs('relatedProductsTitle') }}</h2>
       </div>
 
-      <!-- Arrows ลอยทับขอบรางนี้เท่านั้น แยกออกจากแถวจุดด้านล่างเพื่อไม่ให้ทับกัน -->
       <div class="relative">
         <button
           v-if="product.related_products.length > 1"

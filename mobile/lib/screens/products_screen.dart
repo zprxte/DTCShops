@@ -13,6 +13,7 @@ import '../widgets/pagination_bar.dart';
 import '../widgets/search_bar_button.dart';
 import '../widgets/product_card.dart';
 
+// แท็บสินค้า: กริด 2 คอลัมน์ + ตัวกรอง/เรียง + แบ่งหน้า · ส่ง searchword มา = หน้าผลค้นหา
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({
     super.key,
@@ -33,10 +34,9 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   late Future<ProductPage> _future;
 
-  int _page = 1; // ตอนนี้อยู่หน้าไหน
+  int _page = 1;
 
-  // คุมการเลื่อนของตาราง เปลี่ยนหน้าแล้วต้องพากลับขึ้นบนสุด
-  // ไม่งั้นผู้ใช้จะค้างอยู่กลางรายการของหน้าใหม่โดยไม่รู้ตัว
+  // เปลี่ยนหน้าแล้วพากลับขึ้นบนสุด
   final ScrollController _gridController = ScrollController();
 
   @override
@@ -50,30 +50,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
         .then((options) {
           if (mounted) setState(() => _options = options);
         })
-        .catchError((Object _) {}); // โหลดตัวกรองพังก็ยังดูสินค้าได้ตามปกติ
+        .catchError((Object _) {}); // โหลดตัวกรองพังก็ยังดูสินค้าได้
   }
 
-  // ตัวกรองเริ่มต้นของคำสั่งล่าสุดจาก MainScreen
-  // หมวดที่กดมาจากหน้าแรกถูกยัดเป็น "ตัวกรองที่ติ๊กไว้ให้แล้ว" ไม่ใช่เงื่อนไขซ่อน
-  // ผู้ใช้จึงเห็นเป็นชิปและกดกากบาทเอาออกได้เหมือนติ๊กเอง (เหมือนเว็บ)
+  // ตัวกรองเริ่มต้นจากคำสั่งล่าสุดของ MainScreen (หมวดที่กดมาเป็นชิปที่เอาออกได้)
   ProductFilters _filtersForRequest() {
     final categoryId = widget.initialCategoryId;
     return ProductFilters.initial(isSearch: _isSearch)
         .copyWith(categoryIds: categoryId == null ? null : {categoryId});
   }
 
-  // หน้านี้อยู่ใน IndexedStack จึงไม่ถูกสร้างใหม่ตอนสลับแท็บ
-  // การกดหมวดหมู่ครั้งใหม่มาถึงที่นี่แทน initState
+  // อยู่ใน IndexedStack ไม่ถูกสร้างใหม่ — คำสั่งใหม่มาทางนี้แทน initState
   @override
   void didUpdateWidget(ProductsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // ดูที่ตัวนับ ไม่ใช่ค่าหมวด เพราะกดหมวดเดิมซ้ำค่าไม่เปลี่ยนแต่ต้องทำงาน
+    // ดูตัวนับ เพราะกดหมวดเดิมซ้ำค่าไม่เปลี่ยน
     if (widget.requestSeq == oldWidget.requestSeq) return;
     setState(() {
       _searchword = widget.initialSearchword;
       _searchedAs = null;
       _suggestions = [];
-      _filters = _filtersForRequest(); // แทนที่ของเดิม ไม่สะสมทับกันไปเรื่อยๆ
+      _filters = _filtersForRequest();
       _page = 1;
       _future = _fetch();
     });
@@ -86,19 +83,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
     super.dispose();
   }
 
-  // คำที่ระบบใช้ค้นจริงเมื่อกู้คำพิมพ์ผิดแป้นให้ (null = ใช้คำที่ผู้ใช้พิมพ์)
+  // คำที่ใช้ค้นจริงเมื่อกู้แป้นให้ (null = คำที่พิมพ์)
   String? _searchedAs;
 
-  // คำแนะนำ "คุณหมายถึง…?" — มีค่าเฉพาะตอนค้นแล้วไม่เจอ
+  // คุณหมายถึง…? (เฉพาะตอนค้นไม่เจอ)
   List<SearchSuggestion> _suggestions = [];
 
   late ProductFilters _filters;
-  FilterOptions? _options; // โหลดครั้งเดียวพอ ตัวเลือกไม่เปลี่ยนบ่อย
+  FilterOptions? _options;
   int _total = 0;
 
+  // เปิดแผ่นตัวกรองแล้วโหลดใหม่จากหน้า 1
   Future<void> _openFilters() async {
     final options = _options;
-    if (options == null) return; // ยังโหลดตัวเลือกไม่เสร็จ
+    if (options == null) return;
     final result = await showFilterSheet(
       context,
       options: options,
@@ -108,13 +106,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (result == null || !mounted) return;
     setState(() {
       _filters = result;
-      _page = 1; // เปลี่ยนตัวกรองแล้วต้องกลับหน้า 1 เสมอ
-      // ไม่งั้นอาจค้างอยู่หน้า 5 ของผลลัพธ์ที่มีแค่ 2 หน้า แล้วเจอหน้าว่าง
+      _page = 1;
       _future = _fetch();
     });
     if (_gridController.hasClients) _gridController.jumpTo(0);
   }
 
+  // เอาตัวกรองออกหนึ่งอัน (กดกากบาทบนชิป)
   void _removeFilter({String? categoryId, String? tag}) {
     setState(() {
       _filters = _filters.copyWith(
@@ -128,18 +126,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
     });
   }
 
-  // คำค้นที่หน้านี้กำลังแสดงผลอยู่ (null = โหมดสินค้าทั้งหมด)
-  // เป็น state ไม่ใช่ prop เพราะผู้ใช้ล้างคำค้นทิ้งจากชิปได้เอง
+  // คำค้นที่แสดงผลอยู่ (null = สินค้าทั้งหมด) เป็น state เพราะล้างจากชิปได้
   String? _searchword;
 
-  // ออกจากโหมดผลการค้นหา กลับไปแสดงสินค้าทั้งหมด (ตัวกรองที่ติ๊กไว้ยังอยู่)
+  // ออกจากโหมดผลค้นหา (ตัวกรองที่ติ๊กไว้ยังอยู่)
   void _clearSearch() {
     setState(() {
       _searchword = null;
       _searchedAs = null;
       _suggestions = [];
-      // การเรียงของสองโหมดใช้คนละชุด: 'relevance' ใช้ได้เฉพาะตอนมีคำค้น
-      // ถ้าปล่อยค้างไว้ backend จะไม่รู้จักแล้วเงียบๆ ตกไปเป็นค่าอื่น
+      // 'relevance' ใช้ได้เฉพาะตอนมีคำค้น ต้องเปลี่ยนการเรียงด้วย
       if (_filters.sort == 'relevance') {
         _filters = _filters.copyWith(sort: 'newest');
       }
@@ -151,6 +147,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   bool get _isSearch => (_searchword ?? '').trim().isNotEmpty;
 
+  // โหลด: มีคำค้น = /search · ไม่มี = /products
   Future<ProductPage> _fetch() {
     final future = _isSearch
         ? ApiService()
@@ -162,7 +159,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 sort: _filters.sort,
               )
               .then((result) {
-                // เก็บไว้ก่อนแปลงเป็น ProductPage เพราะ ProductPage ไม่มีช่องนี้
                 if (mounted) {
                   setState(() {
                     _searchedAs = result.searchedAs;
@@ -173,7 +169,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   products: result.products,
                   page: result.page,
                   totalPages: result.totalPages,
-                  total: result.total, // ไม่ส่งมาด้วย แถบจะขึ้น "0 รายการ"
+                  total: result.total,
                 );
               })
         : ApiService().fetchProducts(
@@ -182,8 +178,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             tags: _filters.tags,
             sort: _filters.sort,
           );
-    // จำนวนรายการโชว์อยู่บนแถบตัวกรอง ซึ่งวาดก่อน body จึงอ่านจาก snapshot
-    // ของ FutureBuilder ไม่ได้ ต้องเก็บใส่ State ไว้ต่างหากเมื่อข้อมูลมาถึง
+    // จำนวนรายการเก็บใน State เพราะแถบตัวกรองวาดก่อน body
     future
         .then((result) {
           if (mounted) {
@@ -192,7 +187,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             });
           }
         })
-        .catchError((Object _) {}); // ข้อผิดพลาดมี FutureBuilder จัดการอยู่แล้ว
+        .catchError((Object _) {});
     return future;
   }
 
@@ -204,8 +199,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (_gridController.hasClients) _gridController.jumpTo(0);
   }
 
-  // หัวรายการตาม wireframe: ช่องค้นหา → ปุ่มตัวกรอง/เรียง + จำนวนรายการ
-  // → ชิปของที่เลือกไว้ (กดกากบาทเอาออกได้ทันที)
+  // หัวรายการ: ปุ่มตัวกรอง/เรียง + จำนวนรายการ → ชิปของที่เลือก
   Widget _filterHeader() {
     final hasChips =
         _isSearch ||
@@ -214,8 +208,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      // พื้นขาวแบบเดียวกับหัว (ผู้ใช้ขอ) — แถบนี้เลื่อนหายไปกับรายการ
-      // เส้นใต้หัวจึงยังต้องอยู่ ไม่งั้นตอนเลื่อน/ตอนโหลด หัวจะกลืนกับเนื้อหา
       decoration: const BoxDecoration(
         color: AppColors.white,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -225,8 +217,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         children: [
           Row(
             children: [
-              // ปุ่มสองตัวหดตัวอยู่ใน Expanded ร่วมกัน เหลือเท่าไรหลังหักจำนวนรายการออก
-              // จอแคบ + ป้ายเรียงยาวๆ (ราคาน้อย → มาก) จะย่อด้วย … แทนที่จะล้นขอบ
+              // ป้ายเรียงยาวย่อด้วย … แทนล้นขอบ
               Expanded(
                 child: Row(
                   children: [
@@ -290,8 +281,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                // คำค้นมาก่อนเสมอ เป็นทางออกจากโหมดผลการค้นหาโดยไม่ต้องกดย้อนกลับ
-                // (หน้านี้เป็นแท็บแล้ว กดย้อนกลับคือออกจากแอป ไม่ใช่ล้างคำค้น)
+                // ชิปคำค้นมาก่อนเสมอ (เป็นทางออกจากโหมดค้นหา)
                 if (_isSearch)
                   Chip(
                     label: Text(
@@ -331,7 +321,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // ไม่มีเส้นใต้หัว (ทับค่าใน appBarTheme) — ผู้ใช้ขอ ให้หัวต่อกับแถบตัวกรองสีขาวเป็นผืนเดียว
         shape: const Border(),
         title: Text(langs('productsTitle'), overflow: TextOverflow.ellipsis),
         actions: [LanguageButton()],
@@ -339,15 +328,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
           preferredSize: const Size.fromHeight(60),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            // โหมดผลการค้นหา: โชว์คำที่ค้นอยู่ในช่อง กดแล้วแก้คำต่อได้เลย
             child: SearchBarButton(
               query: _isSearch ? _searchword!.trim() : null,
               onSearch: widget.onSearch,
             ),
           ),
         ),
-        // ปุ่มสลับภาษาแทนตัวเปลี่ยนหน้าที่เคยอยู่ตรงนี้ — การเปลี่ยนหน้า
-        // มีแถบเลขหน้าท้ายรายการอยู่แล้ว ไม่ต้องมีสองที่
       ),
       body: FutureBuilder<ProductPage>(
         future: _future,
@@ -365,8 +351,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           return ScrollConfiguration(
             behavior: ScrollConfiguration.of(context)
                 .copyWith(overscroll: false),
-            // CustomScrollView: หัวแถบ ตาราง และแถบเลขหน้า อยู่ในสิ่งที่เลื่อน
-            // อันเดียวกัน แถบเลขหน้าจึงโผล่ตอนเลื่อนถึงล่างสุด ไม่ตรึงทับจอ
+            // หัว ตาราง และแถบเลขหน้าอยู่ในตัวเลื่อนเดียวกัน
             child: CustomScrollView(
               controller: _gridController,
               slivers: [
@@ -413,7 +398,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       ),
                     ),
                   ),
-                // ค้นไม่เจอ → เสนอชื่อที่ใกล้เคียง กดแล้วค้นด้วยชื่อนั้นทันที
+                // ค้นไม่เจอ → เสนอชื่อใกล้เคียง
                 if (products.isEmpty && _suggestions.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -466,7 +451,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     ),
                   ),
                 ),
-                // แถบเลขหน้าเต็ม อยู่ท้ายรายการ เลื่อนลงมาถึงจึงเห็น
                 SliverToBoxAdapter(
                   child: SafeArea(
                     top: false,

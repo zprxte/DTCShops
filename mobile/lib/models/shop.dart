@@ -1,3 +1,4 @@
+// สาขา DTC Shop 1 แห่ง (GET /shops)
 class Shop {
   final String shopId;
   final String shopName;
@@ -24,7 +25,7 @@ class Shop {
       address: json['address'] as String?,
       tel: json['tel'] as String?,
       image: json['image'] as String?,
-      // lat/lon ส่งมาเป็นตัวเลขทศนิยม แต่ jsonDecode อาจได้ int ถ้าค่าลงตัวพอดี
+      // jsonDecode อาจได้ int ถ้าค่าลงตัว จึงแปลงเป็น double
       lat: (json['lat'] as num?)?.toDouble() ?? 0,
       lon: (json['lon'] as num?)?.toDouble() ?? 0,
     );

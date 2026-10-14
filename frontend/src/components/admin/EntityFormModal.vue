@@ -1,8 +1,5 @@
 <script setup lang="ts">
-// Generic add/edit modal shared by the six simple CRUD admin sections added
-// 2026-09-03 (บทความ/ร้านค้า/ADS/แบนเนอร์/ข้อมูล SEO/ข้อมูล Footer) — each
-// page just describes its own fields, this renders the form + handles the
-// modal chrome so that markup isn't duplicated six times over.
+// ป็อปอัปฟอร์มเพิ่ม/แก้ไขแบบทั่วไปของหน้าแอดมิน — หน้าเรียกแค่ส่งรายการฟิลด์มา
 import { reactive, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 
@@ -12,7 +9,7 @@ export interface EntityField {
   type?: 'text' | 'textarea' | 'date' | 'number'
   required?: boolean
   placeholder?: string
-  half?: boolean // render at half-width, two per row
+  half?: boolean
 }
 
 const props = defineProps<{
@@ -34,11 +31,12 @@ watch(
   { immediate: true }
 )
 
-// <input type="date"> needs a bare YYYY-MM-DD, API rows come back as full ISO timestamps
+// <input type="date"> ต้องการ YYYY-MM-DD แต่ API คืน ISO เต็ม
 function dateValue(v: unknown): string {
   return v ? String(v).slice(0, 10) : ''
 }
 
+// ส่งค่าฟอร์มกลับให้หน้าแม่บันทึก
 function handleSubmit() {
   emit('save', { ...form })
 }

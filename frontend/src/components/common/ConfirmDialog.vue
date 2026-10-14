@@ -1,7 +1,5 @@
 <script setup lang="ts">
-// Simple centered modal used in place of the native `confirm()` popup for
-// destructive admin actions (delete buttons). Admin-only component, so text
-// is plain Thai (no i18n needed here).
+// ป็อปอัปยืนยันการลบของหน้าแอดมิน (แทน confirm() ของเบราว์เซอร์)
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -13,7 +11,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
 const confirmButton = ref<HTMLButtonElement | null>(null)
 
-//เปิดป็อปอัปแล้วโฟกัสไปที่ปุ่ม "ลบ" ทันที กด Enter ได้เลยโดยไม่ต้องเลื่อนเมาส์
+// เปิดแล้วโฟกัสปุ่มลบทันที
 watch(
   () => props.open,
   (isOpen) => {
@@ -22,8 +20,7 @@ watch(
   { immediate: true }
 )
 
-//Enter = ยืนยันลบ, Esc = ยกเลิก — ข้าม Enter ตอนโฟกัสอยู่บนปุ่มอยู่แล้ว
-//เพราะเบราว์เซอร์จะสั่ง click ของปุ่มนั้นเองอยู่แล้ว (กด Enter บน "ยกเลิก" ต้องได้ยกเลิก ไม่ใช่ลบ)
+// Enter = ยืนยัน · Esc = ยกเลิก (โฟกัสอยู่บนปุ่มแล้วให้เบราว์เซอร์ click ปุ่มนั้นเอง)
 function onKeydown(event: KeyboardEvent) {
   if (!props.open) return
   if (event.key === 'Escape') {

@@ -5,17 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/product.dart';
 
-// หนึ่งช่องในตารางเปรียบเทียบ = (สินค้า, โมเดล)
-//
-// เก็บระดับโมเดลเหมือนฝั่งเว็บ เพราะสินค้าตัวเดียวกันคนละโมเดลมีราคาและสเปค
-// ต่างกัน ถ้าเก็บแค่ระดับสินค้าจะเทียบ "รุ่น 4 ช่อง vs รุ่น 8 ช่อง" ไม่ได้เลย
-// [modelId] เป็น null เฉพาะสินค้าที่ไม่มีโมเดลให้เลือก
+// 1 ช่องในตารางเปรียบเทียบ = (สินค้า, โมเดล) · modelId เป็น null เฉพาะสินค้าที่ไม่มีโมเดล
 @immutable
 class CompareItem {
   final String productId;
   final String productName;
   final String? productImage;
-  final num productPrice; // ราคาของโมเดลที่เลือก ไม่ใช่ราคาเริ่มต้นของสินค้า
+  final num productPrice; // ราคาของโมเดลที่เลือก
   final String? modelId;
   final String? modelName;
 
@@ -28,7 +24,7 @@ class CompareItem {
     this.modelName,
   });
 
-  // รหัสประจำช่อง — สินค้าเดียวกันคนละโมเดลต้องได้คนละค่า
+  // รหัสประจำช่อง (สินค้าเดียวกันคนละโมเดลได้คนละค่า)
   String get key => modelId == null ? productId : '$productId::$modelId';
 
   Map<String, dynamic> toJson() => {
@@ -57,31 +53,23 @@ class CompareItem {
   );
 }
 
-// ตะกร้าเปรียบเทียบของทั้งแอป — มีตัวเดียวใช้ร่วมกันทุกหน้า (singleton)
-//
-// ใช้ [ValueNotifier] เพื่อให้หน้าไหนก็ตามที่ครอบด้วย ValueListenableBuilder
-// วาดใหม่เองทันทีที่รายการเปลี่ยน โดยไม่ต้องส่งค่าผ่าน constructor ไปทีละชั้น
-//
-// จำข้ามการเปิดแอปเหมือนเว็บที่เก็บลง localStorage — ทุกครั้งที่รายการเปลี่ยน
-// จะบันทึกลง shared_preferences ให้เอง ([load] เรียกครั้งเดียวตอนเปิดแอป)
+// ตะกร้าเปรียบเทียบของทั้งแอป (singleton + ValueNotifier) บันทึกลง shared_preferences ทุกครั้งที่เปลี่ยน
 class CompareStore {
   CompareStore._() {
-    // ดักที่ตัว notifier จุดเดียว ทุกเมธอดที่แก้รายการจึงบันทึกครบโดยไม่ต้องจำไปเรียกเอง
+    // ฟังที่ notifier จุดเดียว ทุกเมธอดที่แก้รายการจึงบันทึกเอง
     items.addListener(_persist);
   }
   static final CompareStore instance = CompareStore._();
 
   static const String _storageKey = 'compare_items';
 
-  // เพดานของ "แอปมือถือ" โดยเฉพาะ: เทียบได้ทีละ 2 ช่อง
-  // จุดประสงค์ (มองเทียบกันทีเดียว) — ข้อความทุกจุดอ่านเลขจากตัวนี้ ไม่ hardcode
+  // เพดานของแอป: เทียบได้ทีละ 2 ช่อง (เว็บ 4)
   static const int maxItems = 2;
 
   final ValueNotifier<List<CompareItem>> items =
       ValueNotifier<List<CompareItem>>([]);
 
-  // อ่านรายการที่เคยเลือกไว้ — ข้อมูลเสีย/อ่านไม่ได้ก็เริ่มจากตะกร้าว่าง
-  // ไม่ควรทำให้แอปเปิดไม่ขึ้น (เหมือน loadPersisted() ของเว็บ)
+  // โหลดรายการที่เคยเลือก — ข้อมูลเสียเริ่มจากตะกร้าว่าง
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -90,13 +78,14 @@ class CompareStore {
       final list = (jsonDecode(raw) as List)
           .map((e) => CompareItem.fromJson(e as Map<String, dynamic>))
           .toList();
-      // เพดานอาจลดลงในรุ่นหลัง — ตัดท้ายให้เหลือไม่เกินเพดานปัจจุบัน
+      // ตัดท้ายให้ไม่เกินเพดานปัจจุบัน
       items.value = list.take(maxItems).toList();
     } catch (e) {
       debugPrint('โหลดตะกร้าเปรียบเทียบไม่ได้: $e');
     }
   }
 
+  // บันทึกรายการลงเครื่อง
   Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -109,14 +98,11 @@ class CompareStore {
     }
   }
 
-  // สินค้าตัวนี้อยู่ในตาราง "อย่างน้อยหนึ่งโมเดล" หรือยัง
-  // (ปุ่มบนการ์ดสินค้าใช้ค่านี้ตัดสินว่าจะขึ้นว่า "อยู่ในตารางแล้ว" ไหม)
+  // สินค้านี้อยู่ในตารางอย่างน้อยหนึ่งโมเดลไหม
   bool contains(String productId) =>
       items.value.any((item) => item.productId == productId);
 
-  // โมเดลนี้ของสินค้าตัวนี้อยู่ในตารางหรือยัง (ป็อปอัปเลือกโมเดลใช้)
-  // ช่องรหัสนี้ยังอยู่ในตารางไหม — ป็อปอัป "เปลี่ยนสินค้า" ใช้เช็กว่าช่องที่
-  // กำลังจะเปลี่ยนถูกเอาออกไปแล้วหรือยัง (ถ้าไม่มีแล้วก็ไม่เหลืออะไรให้แทนที่)
+  // สินค้า + โมเดลนี้อยู่ในตารางไหม
   bool containsKey(String key) => items.value.any((item) => item.key == key);
 
   bool containsExact(String productId, String? modelId) => items.value.any(
@@ -125,18 +111,16 @@ class CompareStore {
 
   bool get isFull => items.value.length >= maxItems;
 
-  // เพิ่มหนึ่งช่อง — คืน false เมื่อเต็มแล้ว (หน้าจอเอาไปขึ้นข้อความเตือน)
-  // ช่องที่มีอยู่แล้วถือว่าสำเร็จ ไม่เพิ่มซ้ำ
+  // เพิ่มหนึ่งช่อง — เต็มแล้วคืน false · มีอยู่แล้วถือว่าสำเร็จ
   bool add(CompareItem item) {
     if (containsExact(item.productId, item.modelId)) return true;
     if (isFull) return false;
-    // ต้องสร้าง list ใหม่เสมอ ถ้าแก้ list เดิมแล้วใส่กลับ ValueNotifier
-    // จะมองว่าเป็นค่าเดิม (identical) แล้วไม่แจ้งให้หน้าจอวาดใหม่
+    // ต้องสร้าง list ใหม่ ไม่งั้น ValueNotifier มองว่าค่าเดิมแล้วไม่แจ้งเปลี่ยน
     items.value = [...items.value, item];
     return true;
   }
 
-  // เพิ่มถ้ายังไม่มี / เอาออกถ้ามีอยู่แล้ว (เทียบทั้งสินค้าและโมเดล)
+  // เพิ่มถ้ายังไม่มี / เอาออกถ้ามี
   bool toggle(CompareItem item) {
     if (containsExact(item.productId, item.modelId)) {
       removeExact(item.productId, item.modelId);
@@ -145,13 +129,14 @@ class CompareStore {
     return add(item);
   }
 
-  // เอาออกทุกโมเดลของสินค้าตัวนี้ — ใช้กับปุ่มบนการ์ดสินค้าที่รู้แค่ตัวสินค้า
+  // เอาออกทุกโมเดลของสินค้านี้
   void remove(String productId) {
     items.value = items.value
         .where((item) => item.productId != productId)
         .toList();
   }
 
+  // เอาออกเฉพาะช่องที่ตรงทั้งสินค้าและโมเดล
   void removeExact(String productId, String? modelId) {
     items.value = items.value
         .where(
@@ -160,18 +145,7 @@ class CompareStore {
         .toList();
   }
 
-  // แทนที่ช่องเดิมด้วยของใหม่ โดยอยู่ตำแหน่งเดิม
-  // (ปุ่ม "เปลี่ยนสินค้า" และ dropdown เลือกโมเดลบนหัวคอลัมน์)
-  //
-  // ต้องแทนที่ในตำแหน่งเดิม ไม่ใช่ลบแล้วต่อท้าย ไม่งั้นคอลัมน์จะสลับที่
-  // ทั้งที่ผู้ใช้แค่เปลี่ยนของในช่องเดียว
-  //
-  // ถ้าของใหม่ไปตรงกับช่องอื่นที่มีอยู่แล้ว = **สลับที่กันสองช่อง**
-  // (ช่องนั้นรับของเดิมของช่องนี้ไป) ไม่ใช่ปฏิเสธ — ผู้ใช้ที่เลือกโมเดลซึ่ง
-  // อีกช่องถืออยู่ ตั้งใจจะย้ายมันมาไว้ฝั่งนี้ การขึ้นข้อความว่าซ้ำแล้วไม่ทำ
-  // อะไรให้เลยทำให้ต้องไปไล่เปลี่ยนอีกช่องเองก่อน ซึ่งวกวนโดยไม่จำเป็น
-  //
-  // คืน false เฉพาะตอนหาช่องที่จะแทนที่ไม่เจอ (ถูกเอาออกไปก่อนแล้ว)
+  // แทนที่ช่องเดิมในตำแหน่งเดิม — ถ้าของใหม่ตรงกับช่องอื่น = สลับกัน · หาช่องไม่เจอคืน false
   bool replace(String key, CompareItem item) {
     final list = [...items.value];
     final index = list.indexWhere((old) => old.key == key);
@@ -180,14 +154,14 @@ class CompareStore {
     final other = list.indexWhere(
       (old) => old.key == item.key && old.key != key,
     );
-    if (other >= 0) list[other] = list[index]; // ของเดิมย้ายไปอยู่ช่องนั้นแทน
+    if (other >= 0) list[other] = list[index];
 
     list[index] = item;
     items.value = list;
     return true;
   }
 
-  // เอาออกด้วยรหัสประจำช่อง — ปุ่ม ✕ บนหัวคอลัมน์ในตารางใช้
+  // เอาออกด้วยรหัสช่อง (ปุ่ม ✕ บนหัวคอลัมน์)
   void removeKey(String key) {
     items.value = items.value.where((item) => item.key != key).toList();
   }

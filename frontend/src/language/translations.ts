@@ -1,3 +1,4 @@
+// ข้อความ UI ฝั่ง Public 3 ภาษา (ไทย / อังกฤษ / ญี่ปุ่น) — ทุกภาษาต้องมีคีย์ครบเท่ากัน
 export type Lang = 'th' | 'en' | 'ja'
 
 export const LANGS: { code: Lang; label: string }[] = [
@@ -7,7 +8,7 @@ export const LANGS: { code: Lang; label: string }[] = [
 ]
 
 export const dict = {
-  //ภาษาไทย
+  // ภาษาไทย
   th: {
     siteName: 'DTC Compare',
     tagline: 'ระบบค้นหาและการเปรียบเทียบสินค้า',
@@ -49,7 +50,6 @@ export const dict = {
     footerFaxLabel: 'แฟกซ์',
     footerEmailLabel: 'Email',
 
-    // Search page
     searchFailedMsg: 'ค้นหาไม่สำเร็จ ตรวจสอบว่าเซิร์ฟเวอร์และฐานข้อมูลทำงานอยู่',
     searchResultsFor: 'ผลการค้นหา',
     searchResultsCount: '{n} รายการ',
@@ -80,15 +80,12 @@ export const dict = {
     paginationPrev: 'หน้าก่อนหน้า',
     paginationNext: 'หน้าถัดไป',
 
-    // Homepage — Product Category section (moved off its own /categories page)
     categorySectionTitle: 'หมวดหมู่สินค้า',
 
-    // Homepage — DTC Shop & Services section (branch map)
     shopSectionTitle: 'DTC Shop & Services',
     shopSectionSubtitle: 'DTC Shop',
     shopTelLabel: 'เบอร์โทรศัพท์',
 
-    // Product detail page
     productLoadError: 'ไม่พบสินค้า หรือเกิดข้อผิดพลาดในการโหลดข้อมูล',
     productNotFound: 'ไม่พบสินค้า',
     inCompareAlready: 'อยู่ในรายการเปรียบเทียบแล้ว',
@@ -117,11 +114,9 @@ export const dict = {
     shareViaEmail: 'แชร์ผ่านอีเมล',
     shareLinkCopiedToast: 'คัดลอกลิงก์แล้ว',
 
-    // Contact-to-order CTA block (bottom of Search/Product Detail pages)
     contactCtaTitle: 'ติดต่อสั่งซื้อสินค้า',
     contactCtaBody: '{company} ได้ตระหนักถึงความสำคัญลูกค้า จึงได้จัดตั้ง "ศูนย์ลูกค้าสัมพันธ์ : {tel}" เพื่อเป็นหน่วยงานให้บริการ รวมทั้งรับฟังเสียงของลูกค้าเสมือนหนึ่งการให้บริการแบบ One Stop Service โดยเปิดให้บริการทุกวัน ตลอดเวลา 24 ชั่วโมง',
 
-    // Compare page
     clearAllButton: 'ล้างทั้งหมด',
     clearAllFeaturesButton: 'ล้างคุณสมบัติทั้งหมด',
     clearCompareButton: 'ล้างสินค้าทั้งหมด',
@@ -169,7 +164,7 @@ export const dict = {
     compareSizeShrinkConfirm: 'ลดขนาดและเอาสินค้าออก',
     cancelButton: 'ยกเลิก',
   },
-  //ภาษาอังกฤษ
+  // ภาษาอังกฤษ
   en: {
     siteName: 'DTC Compare',
     tagline: 'Product Search & Comparison System',
@@ -211,7 +206,6 @@ export const dict = {
     footerFaxLabel: 'Fax',
     footerEmailLabel: 'Email',
 
-    // Search page
     searchFailedMsg: 'Search failed. Please check the server and database.',
     searchResultsFor: 'Search results for',
     searchResultsCount: '{n} item(s)',
@@ -242,15 +236,12 @@ export const dict = {
     paginationPrev: 'Previous page',
     paginationNext: 'Next page',
 
-    // Homepage — Product Category section (moved off its own /categories page)
     categorySectionTitle: 'Product Category',
 
-    // Homepage — DTC Shop & Services section (branch map)
     shopSectionTitle: 'DTC Shop & Services',
     shopSectionSubtitle: 'DTC Shop',
     shopTelLabel: 'เบอร์โทรศัพท์',
 
-    // Product detail page
     productLoadError: 'Product not found, or an error occurred while loading.',
     productNotFound: 'Product not found',
     inCompareAlready: 'Already in comparison list',
@@ -279,11 +270,9 @@ export const dict = {
     shareViaEmail: 'Share via Email',
     shareLinkCopiedToast: 'Link copied',
 
-    // Contact-to-order CTA block (bottom of Search/Product Detail pages)
     contactCtaTitle: 'Contact Us to Order',
     contactCtaBody: '{company} values every customer, and has set up a "Customer Care Center: {tel}" to serve and listen to customers as a One Stop Service, available every day, 24 hours.',
 
-    // Compare page
     clearAllButton: 'Clear All',
     clearAllFeaturesButton: 'Clear All Features',
     clearCompareButton: 'Clear all products',
@@ -331,7 +320,7 @@ export const dict = {
     compareSizeShrinkConfirm: 'Shrink and remove',
     cancelButton: 'Cancel',
   },
-  //ภาษาญี่ปุ่น
+  // ภาษาญี่ปุ่น
   ja: {
     siteName: 'DTC Compare',
     tagline: '製品検索・比較システム',
@@ -373,7 +362,6 @@ export const dict = {
     footerFaxLabel: 'FAX',
     footerEmailLabel: 'メール',
 
-    // Search page
     searchFailedMsg: '検索に失敗しました。サーバーとデータベースをご確認ください。',
     searchResultsFor: '検索結果',
     searchResultsCount: '{n}件',
@@ -404,15 +392,12 @@ export const dict = {
     paginationPrev: '前のページ',
     paginationNext: '次のページ',
 
-    // Homepage — Product Category section (moved off its own /categories page)
     categorySectionTitle: '製品カテゴリー',
 
-    // Homepage — DTC Shop & Services section (branch map)
     shopSectionTitle: 'DTC Shop & Services',
     shopSectionSubtitle: 'DTC Shop',
     shopTelLabel: 'เบอร์โทรศัพท์',
 
-    // Product detail page
     productLoadError: '製品が見つからないか、読み込みに失敗しました。',
     productNotFound: '製品が見つかりません',
     inCompareAlready: '比較リストに追加済み',
@@ -441,11 +426,9 @@ export const dict = {
     shareViaEmail: 'メールでシェア',
     shareLinkCopiedToast: 'リンクをコピーしました',
 
-    // Contact-to-order CTA block (bottom of Search/Product Detail pages)
     contactCtaTitle: 'お問い合わせ・ご注文',
     contactCtaBody: '{company}はお客様を大切に考え、「お客様相談センター：{tel}」を設置し、ワンストップサービスとしてお客様の声を承っております。年中無休・24時間対応。',
 
-    // Compare page
     clearAllButton: 'すべてクリア',
     clearAllFeaturesButton: 'すべての機能をクリア',
     clearCompareButton: '商品をすべてクリア',

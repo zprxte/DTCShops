@@ -1,3 +1,4 @@
+// สินค้า 1 ตัวแบบการ์ด (GET /products และ /search)
 class Product {
   final String productId;
   final String productName;
@@ -5,13 +6,10 @@ class Product {
   final num productPrice;
   final String? slug;
 
-  // มีโมเดลให้เลือกไหม — ปุ่มเปรียบเทียบบนการ์ดใช้ตัดสินว่าต้องถามโมเดลก่อน
-  // หรือเพิ่มเข้าตารางได้เลย (backend ส่งมาให้ทั้ง /products และ /search)
+  // มีโมเดลไหม — ปุ่มเปรียบเทียบใช้ตัดสินว่าต้องถามโมเดลก่อน
   final bool hasModels;
 
-  // รหัสโมเดลทั้งหมดของสินค้าตัวนี้ — ใช้บอกว่าเลือกครบทุกโมเดลแล้วหรือยัง
-  // ว่าง = สินค้าไม่มีโมเดล (ทั้ง /products และ /search ส่งช่องนี้มาแล้ว
-  // ตั้งแต่ 23 ก.ย. 2026 — ใช้ `utils/productShape.js` ร่วมกัน)
+  // รหัสโมเดลทั้งหมด (ว่าง = ไม่มีโมเดล) ใช้บอกว่าเลือกครบทุกโมเดลแล้วหรือยัง
   final List<String> modelIds;
 
   const Product({

@@ -6,10 +6,10 @@ import 'language/app_language.dart';
 import 'stores/compare_store.dart';
 import 'utils/compare_actions.dart';
 
+// เปิดแอป: โหลดภาษาและตะกร้าเปรียบเทียบก่อนวาดหน้าแรก
 void main() async {
-  // อ่านภาษาที่เคยเลือกไว้ก่อนวาดหน้าแรก ไม่งั้นจะเห็นภาษาไทยแวบหนึ่งทุกครั้ง
+  // โหลดก่อนวาด ไม่งั้นเห็นภาษาไทย / ป้ายจำนวน 0 แวบหนึ่ง
   WidgetsFlutterBinding.ensureInitialized();
-  // ตะกร้าเปรียบเทียบก็เช่นกัน ไม่งั้นป้ายจำนวนบนแท็บล่างจะขึ้น 0 แวบหนึ่ง
   await Future.wait([
     LanguageStore.instance.load(),
     CompareStore.instance.load(),
@@ -17,13 +17,13 @@ void main() async {
   runApp(const MyApp());
 }
 
+// รากของแอป: ธีมกลาง + วาดใหม่ทั้งแอปเมื่อสลับภาษา
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // ครอบทั้งแอปไว้ เพื่อให้ทุกหน้าวาดใหม่ทันทีที่ผู้ใช้สลับภาษา
-    // (langs() อ่านค่าจากตัวแปรกลาง ไม่ได้เป็น InheritedWidget ของ Flutter)
+    // langs() อ่านตัวแปรกลาง จึงต้องฟังการเปลี่ยนภาษาที่ราก
     return ValueListenableBuilder<String>(
       valueListenable: LanguageStore.instance.code,
       builder: (context, _, _) => _buildApp(),
@@ -32,7 +32,7 @@ class MyApp extends StatelessWidget {
 
   Widget _buildApp() {
     return MaterialApp(
-      // แจ้งเตือนได้จากทุกที่ แม้ตัวที่สั่งจะปิดตัวเองไปแล้ว (ดู showAppMessage)
+      // แจ้งเตือนได้จากทุกที่ (showAppMessage)
       scaffoldMessengerKey: appMessengerKey,
       scrollBehavior: MaterialScrollBehavior().copyWith(overscroll: false),
       title: 'DTC Compare',
@@ -43,8 +43,7 @@ class MyApp extends StatelessWidget {
           seedColor: AppColors.brand500,
           primary: AppColors.brand600,
         ),
-        // หัวขาว + เส้นใต้หัว แยกจากพื้นหน้าสีเทา — ถ้าสีเดียวกับพื้น หัวจะกลืน
-        // ไปกับเนื้อหา ดูเหมือนกรอบหัวลากยาวลงมาทั้งจอ
+        // หัวขาว + เส้นใต้ แยกจากพื้นหน้าสีเทา
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.white,
           surfaceTintColor: Colors.transparent,
@@ -60,12 +59,7 @@ class MyApp extends StatelessWidget {
                 ? const BorderSide(color: AppColors.brand700, width: 1.5)
                 : const BorderSide(color: AppColors.border),
           ),
-          // ห้ามใช้ WidgetStateTextStyle ที่ช่องนี้ — RawChip เอาสไตล์ของ theme
-          // ไป merge กับของ widget ก่อนใช้ ซึ่งอ่านค่าทีละช่อง (color/fontWeight)
-          // แต่ WidgetStateTextStyle ไม่มีค่าจริงในช่องพวกนั้น เลยได้ null หมด
-          // ตัวอักษรจึงกลายเป็นสีที่กลืนกับพื้น (เคยทำชิปดูว่างเปล่ามาแล้ว)
-          // ที่รองรับจริงคือใส่ตัวแปรตามสถานะไว้ใน color เพราะ RawChip เรียก
-          // resolveAs() กับ labelStyle.color โดยเฉพาะ
+          // ห้ามใช้ WidgetStateTextStyle — RawChip merge ทีละช่องแล้วได้ null (ตัวอักษรกลืนพื้น) ใส่สีตามสถานะใน color แทน
           labelStyle: TextStyle(
             fontWeight: FontWeight.w500,
             color: WidgetStateColor.resolveWith(
@@ -74,8 +68,6 @@ class MyApp extends StatelessWidget {
                   : AppColors.navy900,
             ),
           ),
-          // เงาจะเห็นก็ต่อเมื่อ elevation > 0 เท่านั้น อยากได้เงาตอนเลือก
-          // ให้เปลี่ยน elevation เป็น 2
           elevation: 0,
           selectedShadowColor: AppColors.brand700,
           pressElevation: 2,
@@ -84,9 +76,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      // ห้ามใส่ const ตรงนี้ — const ทำให้ Flutter ได้ widget ตัวเดิมเป๊ะ
-      // (identical) ทุกครั้งที่วาดใหม่ แล้วข้ามการ build ทั้งกิ่งไปเลย
-      // สลับภาษาแล้วหน้าจอจะไม่เปลี่ยนจนกว่าจะเปลี่ยนหน้า
+      // ห้าม const — widget ตัวเดิมเป๊ะจะถูกข้าม build สลับภาษาแล้วหน้าไม่เปลี่ยน
       // ignore: prefer_const_constructors
       home: MainScreen(),
     );

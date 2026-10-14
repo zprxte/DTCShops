@@ -13,6 +13,7 @@ import '../widgets/async_state.dart';
 import '../widgets/remote_image.dart';
 import '../utils/launch.dart';
 
+// แท็บหน้าแรก: ช่องค้นหา → หมวดหมู่ → สินค้าแนะนำ (ยอดนิยม) → รายการสาขา
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -36,12 +37,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _future = _fetchData();
   }
 
+  // โหลดหมวดหมู่ สินค้าแนะนำ และสาขาพร้อมกัน
   Future<List<dynamic>> _fetchData() async {
     return await Future.wait([
       ApiService().fetchCategories(),
-      // "สินค้าแนะนำ" = 10 อันดับที่คนเข้าดูมากสุด (นับจาก tbl_logs) เหมือนหน้าแรกของเว็บ
-      // ต้องเป็น 'popular' เท่านั้น — backend รู้จักแค่ newest/price_asc/price_desc/
-      // name/popular ค่าอื่นจะตกไปเป็น newest เงียบๆ ไม่มี error ให้เห็น
+      // ต้องเป็น 'popular' — ค่าที่ backend ไม่รู้จักจะตกไปเป็น newest เงียบๆ
       ApiService().fetchProducts(sort: 'popular'),
       ApiService().fetchShops(),
     ]);
@@ -85,10 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(langs('appTitle')),
-        // ปุ่มสลับภาษาอยู่แค่หน้าแรก (เหมือนเว็บที่มีตัวเดียวบน header)
-        // ตั้งครั้งเดียวแล้วมีผลทั้งแอป ไม่ต้องมีทุกหน้าให้รก
         actions: [LanguageButton()],
-        // ช่องค้นหาอยู่ใต้ชื่อแอป เห็นตลอดเวลาโดยไม่ต้องกดไอคอนก่อน
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
           child: Padding(
@@ -144,14 +141,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               width: 64,
                               height: 64,
-                              // พื้นขาว (เว็บเป็น bg-gray-50) — ผู้ใช้ขอให้พื้นหลังรูปเป็นสีเดียวกับการ์ด
                               decoration: BoxDecoration(
                                 color: AppColors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(color: AppColors.border),
                               ),
-                              // หมวดหมู่ที่ยังไม่ใส่รูปใช้ไอคอนสีแบรนด์ ไม่ใช่ไอคอนเทา
-                              // แบบสินค้า วงกลมหมวดหมู่จะได้ไม่ดูเหมือนรูปเสีย
+                              // หมวดที่ไม่มีรูปใช้ไอคอนสีแบรนด์ ไม่ให้ดูเหมือนรูปเสีย
                               child: category.categoryImage == null
                                   ? Icon(
                                       LucideIcons.layoutGrid,
@@ -209,9 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// รายการสาขา DTC Shop
-// wireframe วาดเป็นแผนที่ + รายการ แต่แผนที่ต้องลง package flutter_map เพิ่ม
-// จึงทำเฉพาะรายการไปก่อน (ข้อมูลชุดเดียวกัน)
+// รายการสาขา DTC Shop (ไม่ทำแผนที่ — ตัดสินใจ 28 ก.ย. 2026)
 class _ShopList extends StatelessWidget {
   const _ShopList({required this.shops});
 

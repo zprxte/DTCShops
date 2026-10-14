@@ -1,3 +1,4 @@
+// API สินค้าฝั่ง Public: รายการ / ตัวกรอง / เปรียบเทียบ / รายละเอียด
 const express = require('express')
 const router = express.Router()
 const { PrismaClient } = require('@prisma/client')
@@ -7,11 +8,13 @@ const { logProductView } = require('../utils/activityLog')
 const { buildCards } = require('../utils/productShape')
 const prisma = new PrismaClient()
 
+// รูปหลัก + รูปย่อย 9 ช่อง → แกลเลอรี
 function buildGallery(item) {
   const paths = [item.itm_image_master, ...Array.from({ length: 9 }, (_, i) => item[`itm_image_sub${i + 1}`])].filter(Boolean)
   return paths.map((path, i) => ({ gallery_id: i, product_image: path, sort_order: i }))
 }
 
+// รหัสโมเดลคั่นคอมม่า → อาร์เรย์
 function parseModelCodes(itm_model_code) {
   return (itm_model_code || '')
     .split(',')
@@ -19,7 +22,7 @@ function parseModelCodes(itm_model_code) {
     .filter(Boolean)
 }
 
-//ฟังก์ชันสำหรับแปลงข้อมูลโมเดลสินค้าให้อยู่ในรูปแบบที่ต้องการ
+// แถวโมเดล → รูปที่หน้าเว็บใช้ (ราคา = ราคาสินค้า + ส่วนเพิ่ม พร้อมสเปคเฉพาะโมเดล)
 function modelToCardShape(basePrice, modelRow, index, attributeValues) {
   const addon = Number(modelRow.itm_model_addon_price ?? 0)
   return {
@@ -35,10 +38,7 @@ function modelToCardShape(basePrice, modelRow, index, attributeValues) {
   }
 }
 
-// โมเดลสินค้า (tbl_item_model) เป็น shared catalog (2026-09-03) — ผูกกับ
-// สินค้าผ่าน tbl_item.itm_model_code (คอมม่าคั่น) เท่านั้น ไม่มีสถานะ
-// เปิด/ปิดใช้งานแยกต่างหากอีกต่อไป (การ "แสดง/ไม่แสดง" คุมด้วยการติ๊กเลือก
-// ในฟอร์มแก้ไขสินค้าล้วนๆ — ดู reassignProductModels() ใน routes/admin.js)
+// โมเดลของสินค้าพร้อมสเปค override (โมเดลเป็น shared catalog ผูกผ่าน itm_model_code)
 async function resolveModels(item) {
   const codes = parseModelCodes(item.itm_model_code)
   if (codes.length === 0) return []
@@ -59,10 +59,7 @@ async function resolveModels(item) {
     .map((row, i) => modelToCardShape(item.itm_price, row, i, overridesByModel.get(row.itm_model_code)))
 }
 
-// ตัวเลือกสินค้า / อุปกรณ์เสริม (tbl_item_option) — ผูกผ่าน tbl_item.itm_option_code
-// (คอมม่าคั่น) เหมือนโมเดล แต่ใช้ร่วมกันหลายสินค้าได้ และ **ใช้เฉพาะหน้ารายละเอียด
-// สินค้าเท่านั้น** ไม่แนบไปกับ cardShape()/withDetailFields() เพื่อไม่ให้หลุดเข้า
-// การ์ดสินค้า/ผลค้นหา/ตารางเปรียบเทียบ (คำขอผู้ใช้ 2026-09-09: "ไม่ต้องเอาเข้าเปรียบเทียบ")
+// ตัวเลือกเสริมของสินค้า — ใช้เฉพาะหน้ารายละเอียด ไม่เข้าการ์ด/ผลค้นหา/ตารางเปรียบเทียบ
 async function resolveOptions(item) {
   const codes = (item.itm_option_code || '').split(',').map((c) => c.trim()).filter(Boolean)
   if (codes.length === 0) return []
@@ -82,6 +79,7 @@ async function resolveOptions(item) {
     }))
 }
 
+// แถวค่าสเปค → { value, attribute }
 function attrValueShape(v) {
   return {
     value: v.value,
@@ -89,9 +87,7 @@ function attrValueShape(v) {
   }
 }
 
-// Detail/compare shape — includes the full product_model array (each with
-// its own spec overrides) and base attribute_value list, matching the old
-// withCompareFields()/GET /:id shape.
+// รูปข้อมูลเต็มสำหรับหน้ารายละเอียด/เปรียบเทียบ (โมเดล + สเปคร่วม + ลิงก์ร้าน/ประกัน/จัดส่ง)
 async function withDetailFields(item, attributeValues) {
   const models = await resolveModels(item)
   const modelPrices = models.map((m) => Number(m.product_price)).filter((p) => !Number.isNaN(p))
@@ -108,9 +104,6 @@ async function withDetailFields(item, attributeValues) {
     description: stripHtml(item.itm_information) ?? null,
     slug: item.slug ?? null,
     video_url: item.itm_video_master ?? null,
-    // Metadata shown on the product-detail page's "ความคุ้มครอง"/"การจัดส่ง"
-    // rows and its 4 purchase-link buttons — plain display fields, no
-    // search/compare/filter logic touches any of them.
     sold_count: item.itm_sold ?? null,
     warranty_text: item.itm_guarantee ?? null,
     shipping_text: item.itm_shipping ?? null,
@@ -121,22 +114,13 @@ async function withDetailFields(item, attributeValues) {
     category: item.item_type
       ? { category_id: item.item_type.itm_type_code, category_name: item.item_type.itm_type_desc }
       : null,
-    // Only the shared/base specs (model_code IS NULL) — a model's own
-    // override lives on that model's own product_attribute_value inside
-    // product_model above instead (see modelToCardShape()).
+    // เฉพาะสเปคร่วม (model_code NULL) — ค่าเฉพาะโมเดลอยู่ใน product_model
     product_attribute_value: attributeValues.filter((v) => v.model_code == null).map(attrValueShape),
     product_model: models,
   }
 }
 
-/**
- * GET /api/products/compare?ids=itm-0000001,itm-0000002
- * NOTE: declared before /:id so it isn't swallowed by the param route.
- * Each id can be either the real itm_code or the product's own `slug` —
- * ComparePage.vue's share link now builds its URL from slugs (see
- * utils/slug.ts's productSlug()), matching the product-detail page's own
- * URL, so this needs to resolve either one the same way GET /:id does.
- */
+// GET /api/products/compare?ids= (itm_code หรือ slug) — ต้องประกาศก่อน /:id
 router.get('/compare', async (req, res) => {
   try {
     const ids = String(req.query.ids || '')
@@ -161,19 +145,9 @@ router.get('/compare', async (req, res) => {
   }
 })
 
-/**
- * รายชื่อตัวกรองที่หน้า "สินค้าทั้งหมด" เอาไปทำ checkbox — คำนวณจากข้อมูลจริง
- * ทุกครั้ง ไม่ได้ hardcode ไว้ที่ frontend (เพิ่มสินค้า/สเปคใหม่แล้วตัวกรองโผล่เอง)
- *
- * แท็กที่คืนมาคัดเฉพาะตัวที่ "กรองแล้วได้ผล" — ต้องมีสินค้าที่ยังขายอยู่ใช้
- * ตั้งแต่ MIN_FACET_PRODUCTS ตัวขึ้นไป (ตัดแท็กที่มีสินค้าตัวเดียวใช้ ซึ่งกรอง
- * แล้วก็ได้สินค้านั้นตัวเดียว ไม่ต่างจากกดเข้าไปดูตรงๆ) และต้องไม่ใช่ทุกตัวใน
- * ระบบ (แท็กที่ทุกตัวมีเหมือนกันหมด ติ๊กไปก็ไม่ตัดอะไรออกเลย)
- *
- * ต้องประกาศก่อน '/:id' เสมอ ไม่งั้น Express จะจับ "filters" เป็น :id
- */
+// GET /api/products/filters — หมวด + แท็กสำหรับ checkbox (แท็กต้องมี ≥ MIN_FACET_PRODUCTS ตัวและไม่ใช่ทุกตัว) · ต้องประกาศก่อน /:id
 const MIN_FACET_PRODUCTS = 2
-// แท็กเก็บเป็นข้อความคอมม่าคั่นในคอลัมน์เดียว (tbl_item.itm_tags) ไม่ใช่ตารางแยก
+// แท็กเก็บเป็นข้อความคอมม่าคั่นใน tbl_item.itm_tags
 const splitTags = (value) => String(value ?? '').split(',').map((t) => t.trim()).filter(Boolean)
 
 router.get('/filters', async (req, res) => {
@@ -188,8 +162,7 @@ router.get('/filters', async (req, res) => {
       orderBy: { itm_type_code: 'asc' },
     })
 
-    // จับกลุ่มแท็กแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ แต่แสดงผลด้วยรูปแบบที่พบบ่อยที่สุด
-    // (ข้อมูลจริงเคยมีทั้ง "GPS"/"gps" ปนกัน จะได้ไม่กลายเป็นสองชิป)
+    // รวมแท็กแบบไม่สนตัวพิมพ์ แสดงด้วยรูปที่พบบ่อยสุด ("GPS"/"gps" เป็นชิปเดียว)
     const byTag = new Map()
     for (const item of items) {
       for (const tag of new Set(splitTags(item.itm_tags))) {
@@ -221,26 +194,7 @@ router.get('/filters', async (req, res) => {
   }
 })
 
-/**
- * GET /api/products — list with pagination & filter
- * category_id here means tbl_item_type.itm_type_code (a string, not the
- * old integer Category.category_id) — the query param name is kept
- * unchanged so SearchPage.vue's filter dropdown didn't need to change.
- *
- * ตัวกรองแบบติ๊กหลายรายการ (9 ก.ย. 2026):
- *   category_ids  — itm_type_code คั่นด้วยคอมม่า, ติ๊กหลายหมวด = "หรือ"
- *                   (กว้างขึ้น) สินค้าอยู่ได้หมวดเดียวอยู่แล้ว ถ้าใช้ "และ"
- *                   จะไม่มีวันเจออะไรเลย
- *   tags          — ชื่อแท็กคั่นด้วยคอมม่า, แต่ละอันเป็นเงื่อนไขเพิ่ม = "และ"
- *                   (ติ๊ก AI + IoT = ต้องมีทั้งคู่) ตามแบบ facet ของเว็บ
- *                   e-commerce ทั่วไป
- * category_id เดิม (ค่าเดียว) ยังใช้ได้เหมือนเดิม — ลิงก์การ์ดหมวดหมู่หน้าแรก
- * และลิงก์เก่าที่แชร์กันไว้ยังทำงานปกติ
- */
-// ยอดเข้าดูหน้าสินค้าตลอดช่วงที่เก็บ → Map<itm_code, จำนวน>
-// log เก็บ slug ไว้ใน message ('การเข้าดูสินค้า : <slug>') และข้อมูลเก่าจากเว็บจริง
-// ตัวพิมพ์ไม่ตรงกับ slug ปัจจุบันบ้าง (GPS-DTRCK-M กับ gps-dtrck-m) จึงเทียบแบบไม่สนตัวพิมพ์
-// ใช้ index idx_tbl_logs_type_created ช่วยกรอง type
+// ยอดเข้าดูหน้าสินค้าทั้งหมดจาก tbl_logs → Map<itm_code, จำนวน> (เทียบ slug ไม่สนตัวพิมพ์)
 async function productViewCounts() {
   const rows = await prisma.$queryRaw`
     SELECT i.itm_code AS product_id, COUNT(*)::int AS views
@@ -255,11 +209,11 @@ async function productViewCounts() {
 
 const csv = (value) => String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 
+// GET /api/products — แบ่งหน้า + กรอง (หลายหมวด = "หรือ" · หลายแท็ก = "และ") + เรียง
 router.get('/', async (req, res) => {
   try {
     const { category_id, category_ids, tags, sort = 'newest' } = req.query
-    // บังคับช่วงที่รับได้เสมอ — ?limit=999999 เดิมดึงทั้งตารางมาทีเดียว และ
-    // ?page=abc ทำให้ skip เป็น NaN แล้ว Prisma โยน error ออกมาเป็น 500
+    // บังคับช่วง page/limit — ค่ามั่วเคยทำให้ดึงทั้งตารางหรือ 500
     const page = toPage(req.query.page)
     const limit = toLimit(req.query.limit, 20, 100)
     const where = { itm_flag: '1' }
@@ -268,9 +222,7 @@ router.get('/', async (req, res) => {
     if (categoryCodes.length === 1) where.itm_type_code = categoryCodes[0]
     else if (categoryCodes.length > 1) where.itm_type_code = { in: categoryCodes }
 
-    // แท็กอยู่ในคอลัมน์ข้อความคอมม่าคั่น ไม่มีตารางให้ join — ใช้ contains แบบ
-    // ไม่สนตัวพิมพ์ แล้วกรองซ้ำอีกชั้นฝั่ง JS ให้ตรงทั้งคำ (กัน "AI" ไปแมตช์
-    // แท็กอย่าง "AIR" หรือคำที่มี ai อยู่ข้างใน)
+    // DB กรองแท็กหยาบด้วย contains แล้วเช็คทั้งคำอีกชั้นฝั่ง JS (กัน "AI" ตรง "AIR")
     const wantedTags = csv(tags)
     if (wantedTags.length > 0) {
       where.AND = wantedTags.map((tag) => ({ itm_tags: { contains: tag, mode: 'insensitive' } }))
@@ -283,52 +235,34 @@ router.get('/', async (req, res) => {
       price_asc: { itm_price: 'asc' },
       price_desc: { itm_price: 'desc' },
       name: { itm_desc: 'asc' },
-      // "popular" เรียงฝั่ง JS ด้วยยอดเข้าชมจาก tbl_logs (ดู popularSort ด้านล่าง)
-      // คอลัมน์ `view` ของ tbl_item เป็น 0 ทุกแถว ใช้เรียงไม่ได้
+      // popular เรียงฝั่ง JS — คอลัมน์ view ของ tbl_item เป็น 0 ทุกแถว
       popular: { ist_dt: 'desc' },
     }[sort] || { ist_dt: 'desc' }
 
-    // เรียงตามราคา = ต้องดันสินค้า "ราคาติดต่อสอบถาม" (ราคา 0/ว่าง) ไปท้ายสุด
-    // เสมอไม่ว่าจะน้อย→มาก หรือมาก→น้อย ซึ่ง ORDER BY ของ Prisma เขียนแบบมี
-    // เงื่อนไข (CASE) ไม่ได้ จึงต้องเรียง/ตัดหน้าฝั่ง JS แทน
+    // เรียงราคาต้องดันราคา 0 ไปท้ายทั้งสองทิศ — Prisma ทำไม่ได้ จึงเรียงฝั่ง JS
     const priceSort = sort === 'price_asc' || sort === 'price_desc'
-    // เรียงตามความนิยม = ยอดเข้าดูหน้าสินค้าทั้งหมดใน tbl_logs (ตั้งแต่เริ่มเก็บ)
-    // นับจาก log ต้องรวมยอดแล้วเรียงฝั่ง JS เหมือน priceSort
     const popularSort = sort === 'popular'
 
-    // ติ๊กแท็กไว้ = ต้องกรองให้ตรงทั้งคำอีกชั้นฝั่ง JS ซึ่ง DB นับให้ไม่ได้ จึงดึง
-    // ทั้งชุดมาแล้วตัดหน้าเอง (แคตตาล็อกมี 40 กว่าตัว ไม่ใช่ภาระ) — ไม่ติ๊กแท็ก
-    // ก็ใช้ทางเดิมที่ให้ DB นับและตัดหน้าให้ตามปกติ
+    // ติ๊กแท็ก/เรียงฝั่ง JS = ดึงทั้งชุดมาตัดหน้าเอง · นอกนั้นให้ DB ตัดหน้า
     const paginateInDb = wantedTags.length === 0 && !priceSort && !popularSort
     const items = await prisma.tbl_item.findMany({
       where,
       ...(paginateInDb ? { skip: (page - 1) * limit, take: limit } : {}),
       include: { item_type: true },
-      // ต้องมี itm_code ปิดท้ายเสมอเป็นตัวตัดสินลำดับสำรอง — คอลัมน์ที่ใช้เรียงหลัก
-      // มีค่าซ้ำกันเยอะมาก (สินค้า 31 จาก 44 ตัวมี ist_dt เท่ากันเป๊ะเพราะนำเข้าชุดเดียวกัน,
-      // 34 ตัวราคา 0 เท่ากัน) พอค่าเท่ากัน Postgres ไม่รับประกันลำดับ ทำให้แต่ละ
-      // request ของแต่ละหน้าได้ลำดับไม่ตรงกัน → สินค้าตัวเดียวโผล่ทั้งหน้า 1 และ 2
-      // ส่วนตัวอื่นหายไปเลย (เจอจริง 9 ก.ย. 2026: 8 ซ้ำ / 8 หาย จาก 44 ตัว)
+      // ต้องปิดท้ายด้วย itm_code ให้ลำดับคงที่ — ไม่งั้นแบ่งหน้าแล้วสินค้าซ้ำ/หาย (ist_dt / ราคาซ้ำกันเยอะ)
       orderBy: [orderBy, { itm_code: 'asc' }],
     })
 
     const matched = paginateInDb ? items : items.filter((item) => wantedTags.every((tag) => hasTag(item, tag)))
 
-    // ยอดเท่ากัน (รวมถึงสินค้าที่ยังไม่มีใครเข้าดู = 0) คงลำดับเดิมจาก DB คือ
-    // ใหม่สุดก่อนแล้ว itm_code — Array.sort ของ Node เป็น stable sort
+    // ยอดเท่ากันคงลำดับเดิมจาก DB (Array.sort เป็น stable)
     if (popularSort) {
       const views = await productViewCounts()
       matched.sort((a, b) => (views.get(b.itm_code) ?? 0) - (views.get(a.itm_code) ?? 0))
     }
     const total = paginateInDb ? await prisma.tbl_item.count({ where }) : matched.length
 
-    // เรียงตามราคา = เรียงด้วย "ราคาที่การ์ดแสดง" (สินค้ามีโมเดล = ราคาต่ำสุดของโมเดล)
-    // ไม่ใช่ itm_price — เดิมเรียงด้วย itm_price แล้วสินค้าที่ราคาฐาน 0 แต่โมเดลมีราคา
-    // (itm-0000056 การ์ดขึ้น ฿200–600) ตกไปอยู่กองท้ายกับสินค้า "ติดต่อสอบถาม"
-    // (พบจาก test/productsApi.test.js 28 ก.ย. 2026) · สร้างการ์ดทั้งชุดก่อนเรียง
-    // ไม่เป็นภาระ เพราะเส้นนี้ดึงทั้งชุดมาอยู่แล้ว (paginateInDb = false)
-    // สินค้าไม่มีราคาไปท้ายเสมอทั้งสองทิศ · ปิดท้ายด้วย product_id กันลำดับไม่คงที่
-    // ตอนราคาเท่ากัน — กติกาเดียวกับ sortFns ของ /search
+    // เรียงด้วยราคาที่การ์ดแสดง (มีโมเดล = ราคาต่ำสุดของโมเดล) ไม่ใช่ itm_price · ราคา 0 ท้ายเสมอ
     let cards
     if (priceSort) {
       const all = await buildCards(matched, prisma)
@@ -359,17 +293,7 @@ router.get('/', async (req, res) => {
   }
 })
 
-/**
- * GET /api/products/:id — product detail + attributes
- * :id can be either the real itm_code ("itm-0000003") OR the product's own
- * `slug` column ("hikvision-dash-card-k5") — production already had real,
- * unique, human-readable slugs filled in for every active item, so
- * ProductDetailPage.vue's URL uses those now (see utils/slug.ts's
- * productSlug()) instead of the bare itm_code. Matching on either keeps old
- * bookmarked/shared itm_code links working too.
- * (Product_view_log was dropped along with this project's own analytics
- * tables, so this no longer logs a view — see CLAUDE.md.)
- */
+// GET /api/products/:id — รายละเอียดสินค้า (:id = itm_code หรือ slug)
 router.get('/:id', async (req, res) => {
   try {
     const identifier = String(req.params.id || '').trim()
@@ -385,15 +309,13 @@ router.get('/:id', async (req, res) => {
 
     if (!item) return res.status(404).json({ message: 'ไม่พบสินค้า' })
 
-    // บันทึกการเข้าชมสินค้าลง tbl_logs (ไม่ await — ไม่ให้ถ่วง response
-    // และไม่ให้ log ที่เขียนไม่สำเร็จทำให้หน้าสินค้าพัง)
+    // บันทึกยอดเข้าชม (ไม่ await — log ล้มต้องไม่ทำหน้าสินค้าพัง)
     logProductView(prisma, item)
 
     const detail = await withDetailFields(item, item.attribute_values)
     const product_option = await resolveOptions(item)
 
-    // สินค้าที่เกี่ยวข้อง: ทุกตัวในหมวดหมู่เดียวกัน ยกเว้นตัวเอง (ไม่จำกัดจำนวน
-    // เพราะหมวดหมู่ใหญ่สุดมีแค่ 15 ตัว และแคโรเซลฝั่งหน้าเว็บเลื่อนดูได้อยู่แล้ว)
+    // สินค้าที่เกี่ยวข้อง = ทุกตัวในหมวดเดียวกัน ยกเว้นตัวเอง
     const related_products = item.itm_type_code
       ? await buildCards(
         await prisma.tbl_item.findMany({

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// การ์ดสินค้า: รูป ชื่อ (ไฮไลต์คำค้น) ราคา + ปุ่มเปรียบเทียบ
 import { computed, nextTick, ref } from 'vue'
 import { GitCompare, Check, Loader2 } from 'lucide-vue-next'
 import { useCompareStore } from '../../stores/compare'
@@ -17,7 +18,7 @@ const { langs } = useLanguage()
 
 const inCompare = computed(() => compareStore.isInCompare(props.product.product_id))
 const nameSegments = computed(() => highlightSegments(props.product.product_name, props.query ?? ''))
-//ราคาต่ำสุดถึงราคาสูงสุด
+// มีช่วงราคา (โมเดลราคาต่างกัน) ไหม
 const isPriceRange = computed(() => {
   const product = props.product
   return (
@@ -32,11 +33,7 @@ const loadingModels = ref(false)
 const modelChoices = ref<ProductModel[]>([])
 const modelDialogOpen = ref(false)
 
-//เพิ่ม/เอาออกจากตารางเปรียบเทียบ
-//- ไม่มีโมเดล: เพิ่มตัวสินค้าเลย (เหมือนเดิม)
-//- มี 1 โมเดล: เพิ่มโดยผูกโมเดลนั้นให้อัตโนมัติ
-//- มีหลายโมเดล: เปิดป็อปอัปให้เลือกโมเดลก่อน (กดในป็อปอัปเพื่อเพิ่ม/เอาออกทีละโมเดล)
-//ดึงรายการโมเดลจาก /products/compare ไม่ใช้ /products/:id เพราะตัวนั้นนับยอดเข้าชมสินค้า
+// ปุ่มเปรียบเทียบ: ไม่มี/1 โมเดล = เพิ่มเลย · หลายโมเดล = เปิดป็อปอัปเลือก (ดึงโมเดลจาก /products/compare เพราะ /:id นับยอดเข้าชม)
 async function toggleCompare(e: Event) {
   e.preventDefault()
   if (loadingModels.value) return
@@ -70,6 +67,7 @@ async function toggleCompare(e: Event) {
   }
 }
 
+// เพิ่มเข้าตารางพร้อมโมเดลที่เลือก
 function addToCompare(modelId: string | null, price: number) {
   compareStore.addItem({
     product_id: props.product.product_id,
@@ -80,7 +78,7 @@ function addToCompare(modelId: string | null, price: number) {
   })
 }
 
-//ปิดป็อปอัปแล้วคืนโฟกัสให้ปุ่มเปรียบเทียบของการ์ดใบนี้ (ผู้ใช้คีย์บอร์ดไม่หลงตำแหน่ง)
+// ปิดป็อปอัปแล้วคืนโฟกัสให้ปุ่มเปรียบเทียบ
 function closeModelDialog() {
   modelDialogOpen.value = false
   nextTick(() => compareButton.value?.focus())

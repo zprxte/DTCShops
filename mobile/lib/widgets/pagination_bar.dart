@@ -4,10 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../config/app_colors.dart';
 import '../language/app_language.dart';
 
-// แถบเลขหน้าแบบวงกลม — ตรรกะเดียวกับหน้าเว็บ (ProductsPage.vue)
-//
-// หน้าน้อย (≤ 7) แสดงครบทุกเลข · มากกว่านั้นย่อด้วย … โดยคงไว้เสมอ:
-// หน้าแรก, หน้าสุดท้าย, หน้าปัจจุบันพร้อมเพื่อนบ้านซ้ายขวา
+// แถบเลขหน้าวงกลม (ตรรกะเดียวกับเว็บ): ≤ 7 หน้าแสดงครบ · มากกว่านั้นย่อด้วย … คงหน้าแรก/สุดท้าย/รอบหน้าปัจจุบัน
 class PaginationBar extends StatelessWidget {
   const PaginationBar({
     super.key,
@@ -20,15 +17,14 @@ class PaginationBar extends StatelessWidget {
   final int totalPages;
   final ValueChanged<int> onChanged;
 
-  // รายการที่จะแสดง: ตัวเลข หรือ null = จุดไข่ปลา
+  // เลขที่จะแสดง (null = …)
   List<int?> get _pageNumbers {
     if (totalPages <= 7) {
       return List<int?>.generate(totalPages, (i) => i + 1);
     }
 
     final around = <int>{1, totalPages, page, page - 1, page + 1};
-    // อยู่ต้น/ท้ายราง เติมเพื่อนบ้านฝั่งนั้นให้ครบ ไม่งั้นจะได้ "1 … 3"
-    // ที่กระโดดไปแค่หน้าเดียว ซึ่งไม่มีประโยชน์
+    // อยู่ต้น/ท้าย เติมเพื่อนบ้านฝั่งนั้น ไม่ให้ได้ "1 … 3"
     if (page <= 3) around.addAll([2, 3, 4]);
     if (page >= totalPages - 2) {
       around.addAll([totalPages - 3, totalPages - 2, totalPages - 1]);
@@ -55,9 +51,7 @@ class PaginationBar extends StatelessWidget {
 
     return Semantics(
       label: langs('pageOf', {'page': page, 'total': totalPages}),
-      // ในสิ่งที่เลื่อนได้ ความกว้างเป็นอนันต์ การสั่งจัดกลางจึงไม่มีผล
-      // ต้องบังคับความกว้างขั้นต่ำเท่าจอก่อน แถวถึงจะมีที่ให้จัดกลางจริง
-      // (เลขเยอะจนล้นจอเมื่อไหร่ ความกว้างจริงชนะขั้นต่ำ แล้วปัดได้ตามเดิม)
+      // บังคับกว้างขั้นต่ำเท่าจอ ถึงจะจัดกลางในตัวเลื่อนได้
       child: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -159,7 +153,7 @@ class _ArrowButton extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  // null = ปุ่มกดไม่ได้ (อยู่หน้าแรก/หน้าสุดท้ายแล้ว) จางลงเอง
+  // null = กดไม่ได้ (จางลง)
   final VoidCallback? onPressed;
 
   @override

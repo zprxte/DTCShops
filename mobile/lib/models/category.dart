@@ -1,3 +1,4 @@
+// หมวดหมู่ 1 รายการ (GET /categories)
 class Category {
   final String categoryId;
   final String categoryName;

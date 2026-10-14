@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:search": "docker exec product_compare_api rm -rf /tmp/line && docker exec product_compare_api mkdir -p /tmp/line && docker cp package.json product_compare_api:/tmp/line/ && docker cp handler.js product_compare_api:/tmp/line/ && docker cp flex.js product_compare_api:/tmp/line/ && docker cp env.js product_compare_api:/tmp/line/ && docker cp test product_compare_api:/tmp/line/test &&docker exec -w /tmp/line product_compare_api node --test test/search-queries.test.js",
     "check": "node check.js",
     "bot": "node bot.js",
     "render": "node render-menu.js",

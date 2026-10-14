@@ -2,12 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../language/app_language.dart';
 
-// โครงของแผ่นตัวกรองที่เด้งขึ้นจากข้างล่าง — รายการเลื่อนได้ + แถบปุ่มล่างติดที่
-//
-// ใช้ร่วมกันระหว่างแผ่นตัวกรองสินค้า (`filter_sheet.dart`) กับแผ่นคัดกรองของ
-// ตารางเปรียบเทียบ (`compare_filter_sheet.dart`) ซึ่งเดิมเขียนโครงเดียวกันคนละชุด
-// (สัดส่วนความสูง 0.75/0.4/0.95, ระยะขอบ, แถบปุ่ม "ล้าง | ดูผลลัพธ์") ทำให้เวลา
-// ปรับอย่างหนึ่งต้องไล่แก้ให้เหมือนกันสองที่
+// โครงแผ่นตัวกรองที่เด้งจากข้างล่าง: รายการเลื่อนได้ + แถบปุ่ม "ล้าง | ดูผลลัพธ์" ติดล่าง
 class SheetScaffold extends StatelessWidget {
   const SheetScaffold({
     super.key,
@@ -17,14 +12,13 @@ class SheetScaffold extends StatelessWidget {
     required this.onApply,
   });
 
-  // เนื้อในของแผ่น — วางในรายการที่เลื่อนได้ (ตัวเลื่อนของแผ่นจัดการให้เอง)
   final List<Widget> children;
 
-  // ข้อความของปุ่มล้าง — สองแผ่นใช้คำต่างกัน (ล้างตัวกรอง / ล้างการกรอง)
+  // ข้อความปุ่มล้าง (สองแผ่นใช้คำต่างกัน)
   final String clearLabel;
   final VoidCallback onClear;
 
-  // กด "ดูผลลัพธ์" — ผู้เรียกเป็นคนสั่ง Navigator.pop พร้อมค่าที่ต้องการคืน
+  // กด "ดูผลลัพธ์" — ผู้เรียก pop พร้อมค่าเอง
   final VoidCallback onApply;
 
   @override
@@ -43,7 +37,6 @@ class SheetScaffold extends StatelessWidget {
               children: children,
             ),
           ),
-          // แถบปุ่มล่างติดอยู่กับที่ ไม่เลื่อนหนีไปกับรายการ
           SafeArea(
             top: false,
             child: Padding(

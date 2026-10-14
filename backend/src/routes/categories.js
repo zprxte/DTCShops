@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client')
 const { cached } = require('../utils/cache')
 const prisma = new PrismaClient()
 
+// GET /api/categories — หมวดหมู่ + รูปตัวอย่าง (แคช 5 นาที)
 router.get('/', async (_req, res) => {
   try {
     const payload = await cached('categories', async () => {

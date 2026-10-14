@@ -1,10 +1,4 @@
-// ที่เก็บรูปสินค้า — ใช้ร่วมกันโดย POST /admin/upload/image และนำเข้า Excel
-//
-// DB เก็บ path แบบเดียวกันเสมอ: /uploads/products/<ปี-เดือน>/<ไฟล์>
-//   ไม่ได้ตั้ง SUPABASE_URL  → เขียนลง database/uploads/ (Docker / เครื่องตัวเอง — เหมือนเดิม)
-//   ตั้ง SUPABASE_URL + SUPABASE_SERVICE_KEY → อัปขึ้น Supabase Storage bucket "uploads" (Vercel ดิสก์อ่านอย่างเดียว)
-//     key ใน bucket = path หลัง /uploads/ · หน้าเว็บส่ง /uploads/* ต่อไป bucket (deploy/vercel/build.mjs)
-//     หน้าเว็บ แอป และบอท LINE จึงไม่ต้องรู้ว่ารูปอยู่ที่ไหน
+// ที่เก็บรูป: ไม่มี env Supabase = database/uploads/ · มี = Supabase Storage bucket "uploads" (DB เก็บ /uploads/... เหมือนกัน)
 const fs = require('fs')
 const path = require('path')
 
@@ -13,12 +7,13 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || ''
 const BUCKET = process.env.SUPABASE_BUCKET || 'uploads'
 const useStorage = Boolean(SUPABASE_URL && SERVICE_KEY)
 
-// โฟลเดอร์ database/ — บนเครื่อง backend/src/utils → ราก · ใน Docker /app/src/utils → / (mount ที่ /database)
+// database/ — บนเครื่องคือรากโปรเจกต์ · ใน Docker mount ที่ /database
 const DATABASE_DIR = path.join(__dirname, '../../../database')
 const UPLOAD_ROOT = path.join(DATABASE_DIR, 'uploads')
 
 const CONTENT_TYPE = { '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' }
 
+// URL ของไฟล์ใน Supabase Storage
 function storageUrl(key, isPublic) {
   const encoded = key.split('/').map(encodeURIComponent).join('/')
   return `${SUPABASE_URL}/storage/v1/object/${isPublic ? 'public/' : ''}${BUCKET}/${encoded}`
@@ -26,7 +21,7 @@ function storageUrl(key, isPublic) {
 
 const authHeaders = () => ({ Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY })
 
-// บันทึกรูปใหม่ → { url: '/uploads/products/...', key } (key ใช้ลบทิ้งตอนบันทึกล้ม)
+// บันทึกรูปใหม่ → { url, key } (key ใช้ลบทิ้งตอนบันทึกล้ม)
 async function saveImage({ buffer, ext }) {
   const now = new Date()
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -46,6 +41,7 @@ async function saveImage({ buffer, ext }) {
   return { url: `/uploads/${key}`, key }
 }
 
+// ลบรูปตาม key
 async function removeImage(key) {
   if (useStorage) {
     await fetch(storageUrl(key, false), { method: 'DELETE', headers: authHeaders() }).catch(() => {})
@@ -54,7 +50,7 @@ async function removeImage(key) {
   }
 }
 
-// path /uploads/... ชี้ไปรูปที่มีอยู่จริงไหม (กัน ../ หลุดออกนอกโฟลเดอร์)
+// path /uploads/... ชี้รูปที่มีอยู่จริงไหม (กัน ../ หลุดนอกโฟลเดอร์)
 async function imageExists(value) {
   const key = String(value).replace(/^\/uploads\//, '')
   if (!key || key.split('/').includes('..')) return false

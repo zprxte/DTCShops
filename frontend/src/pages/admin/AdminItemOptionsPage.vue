@@ -1,11 +1,5 @@
 <script setup lang="ts">
-// "สินค้า" > "ตัวเลือกสินค้า" — ของเสริม/อุปกรณ์เสริมที่ซื้อเพิ่มพร้อมสินค้าได้
-// (SD Card, เซ็นเซอร์วัดน้ำมัน, เครื่องอ่านบัตร DLT) เก็บใน tbl_item_option
-// ผูกกับสินค้าผ่าน tbl_item.itm_option_code (คอมม่าคั่น)
-//
-// ต่างจาก "โมเดลสินค้า" 2 จุดสำคัญ:
-//   1. ใช้ร่วมกันได้ — สินค้าหลายตัวติ๊กตัวเลือกเดียวกันพร้อมกันได้ ไม่ต้องแย่งเจ้าของ
-//   2. ไม่ถูกดึงเข้าตารางเปรียบเทียบ (คำขอผู้ใช้ 2026-09-09)
+// ตัวเลือกสินค้า (อุปกรณ์เสริม เช่น SD Card) — ใช้ร่วมกันหลายสินค้า ไม่เข้าตารางเปรียบเทียบ
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Plus, SquarePen, Trash2, X } from 'lucide-vue-next'
 import { adminAPI } from '../../services/api'
@@ -31,8 +25,7 @@ const q = ref('')
 const loading = ref(true)
 const pendingDeleteId = ref<string | null>(null)
 
-//ฟอร์มเพิ่ม/แก้ไข — ทำเป็น popup ในหน้าเดียวกัน (ฟิลด์น้อยกว่าโมเดลมาก
-//ไม่มีสเปคย่อย จึงไม่ต้องแยกเป็นฟอร์มเต็มหน้าเหมือน AdminModelFormPage)
+// ฟอร์มเพิ่ม/แก้ไขเป็นป็อปอัป (ฟิลด์น้อย)
 const formOpen = ref(false)
 const editingId = ref<string | null>(null)
 const form = ref({ option_name: '', addon_price: '', stock_quantity: '' })
@@ -40,7 +33,7 @@ const selectedProductIds = ref<string[]>([])
 const productFilter = ref('')
 const saving = ref(false)
 
-// เลขคำขอล่าสุด — พิมพ์เร็วๆ คำขอเก่าอาจตอบกลับทีหลังคำขอใหม่ ให้ใช้ผลของคำขอล่าสุดเท่านั้น
+// คำขอล่าสุดชนะ (พิมพ์เร็วคำขอเก่าอาจตอบทีหลัง)
 let latestRequest = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -55,7 +48,7 @@ function load() {
     .finally(() => { if (requestId === latestRequest) loading.value = false })
 }
 
-// ค้นหาทันทีขณะพิมพ์ (แบบเดียวกับหน้าสินค้า/คุณสมบัติ) — รอหยุดพิมพ์ 300ms ก่อนยิงคำขอ
+// ค้นหาขณะพิมพ์ หน่วง 300ms
 function onSearchInput() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(load, 300)
@@ -102,12 +95,14 @@ function openEdit(row: OptionRow) {
   formOpen.value = true
 }
 
+// ติ๊ก/ถอนติ๊กสินค้าที่ใช้ตัวเลือกนี้
 function toggleProduct(productId: string) {
   selectedProductIds.value = selectedProductIds.value.includes(productId)
     ? selectedProductIds.value.filter((id) => id !== productId)
     : [...selectedProductIds.value, productId]
 }
 
+// บันทึกตัวเลือก
 async function save() {
   if (!form.value.option_name.trim()) {
     toast.error('กรุณากรอกชื่อตัวเลือกสินค้า')
@@ -229,7 +224,6 @@ async function handleDelete(id: string) {
       <p class="text-xs text-gray-500">จำนวนข้อมูลทั้งหมด {{ rows.length }} รายการ</p>
     </div>
 
-    <!-- ฟอร์มเพิ่ม/แก้ไข -->
     <div v-if="formOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" @click="formOpen = false">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-4 max-h-[85vh] overflow-y-auto" @click.stop>
         <div class="flex items-center justify-between">

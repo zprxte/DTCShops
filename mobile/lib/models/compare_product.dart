@@ -1,16 +1,14 @@
-// สินค้าหนึ่งตัวจาก GET /products/compare
-// เก็บเฉพาะที่ตารางใช้จริง: หัวคอลัมน์ + ค่าสเปค + โมเดลพร้อมค่าที่เขียนทับ
+// สินค้า 1 ตัวจาก GET /products/compare: หัวคอลัมน์ + สเปคร่วม + โมเดลพร้อมค่าที่เขียนทับ
 class CompareProduct {
   final String productId;
   final String productName;
   final String? productImage;
   final num productPrice;
-  final String? categoryId; // ใช้เลือกหน่วยราคา (/ ชิ้น หรือ / เดือน)
+  final String? categoryId; // ใช้เลือกหน่วยราคา
 
-  // ชื่อหัวข้อสเปค → ค่าที่ใช้ร่วมทุกโมเดล เช่น {'ความละเอียด': '1080p'}
+  // ชื่อหัวข้อ → ค่าร่วมทุกโมเดล
   final Map<String, String> attributes;
 
-  // โมเดลของสินค้าตัวนี้ (ว่าง = ไม่มีโมเดลให้เลือก)
   final List<CompareModel> models;
 
   const CompareProduct({
@@ -23,8 +21,7 @@ class CompareProduct {
     required this.models,
   });
 
-  // ค่าสเปคที่ต้องแสดงจริงของช่องหนึ่งช่อง
-  // = ค่าร่วมของสินค้า แล้วให้ค่าเฉพาะโมเดลเขียนทับข้อที่ซ้ำกัน
+  // สเปคที่แสดงของช่องหนึ่ง = ค่าร่วม แล้วให้ค่าเฉพาะโมเดลเขียนทับ
   Map<String, String> attributesFor(String? modelId) {
     if (modelId == null) return attributes;
     final model = modelById(modelId);
@@ -32,6 +29,7 @@ class CompareProduct {
     return {...attributes, ...model.attributes};
   }
 
+  // หาโมเดลตามรหัส
   CompareModel? modelById(String? modelId) {
     for (final model in models) {
       if (model.modelId == modelId) return model;
@@ -54,7 +52,7 @@ class CompareProduct {
   }
 }
 
-// โมเดลหนึ่งตัว — ราคาของตัวเอง และสเปคเฉพาะข้อที่เขียนทับของสินค้า
+// โมเดล 1 ตัว: ราคาของตัวเอง + สเปคที่เขียนทับ
 class CompareModel {
   final String modelId;
   final String modelName;
@@ -76,8 +74,7 @@ class CompareModel {
   );
 }
 
-// แปลงลิสต์ product_attribute_value ให้เป็น map ชื่อหัวข้อ → ค่า
-// (backend ส่งรูปแบบเดียวกันทั้งของสินค้าและของโมเดล)
+// product_attribute_value → map ชื่อหัวข้อ → ค่า
 Map<String, String> parseAttributes(Object? raw) {
   final values = (raw as List?) ?? const [];
   final attributes = <String, String>{};
@@ -86,7 +83,7 @@ Map<String, String> parseAttributes(Object? raw) {
     final name = map['attribute']?['attribute_name']?.toString();
     final value = map['value']?.toString().trim();
     if (name == null || value == null || value.isEmpty) continue;
-    // หัวข้อเดียวกันซ้ำหลายแถว เอาแถวแรกที่มีค่าเป็นหลัก
+    // หัวข้อซ้ำเอาแถวแรกที่มีค่า
     attributes.putIfAbsent(name, () => value);
   }
   return attributes;

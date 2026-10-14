@@ -1,17 +1,14 @@
+// axios ตัวกลาง + ฟังก์ชันเรียก API ทุกเส้นของระบบ
 import axios from 'axios'
 
 const api = axios.create({
-  // ต้องเป็น path สัมพัทธ์เสมอ ห้ามใส่ URL เต็ม — Vite proxy `/api` ไปที่ backend ให้
-  // (vite.config.ts) คำขอจึงวิ่งไป origin เดียวกับหน้าเว็บ ไม่ว่าจะเปิดด้วย localhost
-  // หรือ IP ใดก็ตาม = ไม่มี CORS และไม่ต้องตั้งค่าใหม่เมื่อเปลี่ยน Wi-Fi
-  // ⚠️ ห้ามเอา VITE_PROXY_TARGET มาใช้ตรงนี้ — ค่านั้นเป็นของฝั่งเซิร์ฟเวอร์
-  // (ในคอนเทนเนอร์คือ `http://backend:4000` ซึ่งเบราว์เซอร์หาไม่เจอ) และไม่มี /api ต่อท้าย
+  // ต้องเป็น path สัมพัทธ์ — Vite proxy / nginx ส่ง /api ต่อให้ (ห้ามใช้ VITE_PROXY_TARGET ที่นี่ เบราว์เซอร์หา backend:4000 ไม่เจอ)
   baseURL: '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 })
 
-//ดึง token จาก local storage
+// ใส่ token ที่บันทึกไว้ให้ทุกคำขอ
 const stored = localStorage.getItem('auth-storage')
 if (stored) {
   try {
@@ -24,7 +21,7 @@ if (stored) {
   }
 }
 
-//ดัก 401
+// 401 (ที่ไม่ใช่ตอนล็อกอิน) = token ใช้ไม่ได้ → ล้างแล้วกลับหน้าล็อกอิน
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -40,24 +37,13 @@ api.interceptors.response.use(
 
 export default api
 
-/**
- * แปลง path รูปในฐานข้อมูลให้ใช้กับ <img> ได้
- * path ใน DB เป็น `/uploads/...` อยู่แล้ว และ Vite proxy `/uploads` ไป backend ให้
- * จึงส่งต่อตามเดิมได้เลย ไม่ต้องเติม origin (แก้ 16 ก.ย. 2026 — เดิมเติมจาก VITE_API_URL)
- * ส่งไฟล์ต้นฉบับเสมอ (เอาพารามิเตอร์ `width` ที่ไม่มีผลออกแล้ว 11 ก.ย. 2026)
- * ห้ามต่อ `?w=` กลับเข้าไป: ตอนที่ backend ยังย่อรูป URL แบบ `?w=1200` ถูกเบราว์เซอร์
- * จำเป็นรูปย่อ 1200px ไว้ในแคช ถอดระบบย่อรูปแล้ว URL เดิมยังได้รูปย่อจากแคช
- * แบนเนอร์เต็มจอจึงเบลอ — เปลี่ยน URL คือทางเดียวที่ทำให้ทุกเครื่องโหลดไฟล์ใหม่
- * รูปที่เป็นลิงก์ภายนอก (http…) ส่งต่อตามเดิม
- */
+// path รูปใน DB → ใช้กับ <img> ได้เลย (ห้ามต่อ ?w= — URL เดิมติดแคชรูปย่อทำแบนเนอร์เบลอ)
 export function resolveImageUrl(image?: string | null): string | undefined {
   if (!image) return undefined
   if (/^https?:\/\//i.test(image)) return image
   return image
 }
 
-// ===== Typed API helpers =====
-//ระบบค้นหา
 export const searchAPI = {
   search: (params: {
     searchword: string
@@ -69,21 +55,15 @@ export const searchAPI = {
     sort?: string
     page?: number
     limit?: number
-    // NOTE: path ของ API เป็นคนละเรื่องกับ path ของหน้าเว็บ — หน้าเว็บย้ายไป
-    // /products แล้ว แต่ backend ยัง mount ตัวค้นหาไว้ที่ /api/search
-    // (routes/search.js) และย้ายไป /api/products ไม่ได้ เพราะชนกับ
-    // routes/products.js ที่ครอง path นั้นอยู่ (/api/products/:id จะกลืน
-    // /api/products/autocomplete ไปเลย)
+    // API อยู่ที่ /api/search ไม่ใช่ /api/products (ชนกับ /api/products/:id)
   }) => api.get('/search', { params }),
 
   autocomplete: (searchword: string) => api.get('/search/autocomplete', { params: { searchword } }),
 }
 
-//ระบบสินค้า
 export const productAPI = {
   list: (params?: object) => api.get('/products', { params }),
   getById: (id: string) => api.get(`/products/${id}`),
-  // รายการตัวกรอง (หมวดหมู่ + คุณสมบัติที่กรองได้จริง) คำนวณสดจากข้อมูลใน DB
   filters: () => api.get('/products/filters'),
 }
 
@@ -103,9 +83,7 @@ export const shopAPI = {
   list: () => api.get('/shops'),
 }
 
-// บันทึกการเข้าชมหน้าเว็บฝั่ง public ลง tbl_logs (ตารางสถิติจริงของ
-// dtcshops.com) — หน้ารายละเอียดสินค้าไม่ต้องเรียกทางนี้ backend บันทึก
-// ให้เองตอนดึงข้อมูลสินค้าแล้ว
+// บันทึกการเข้าชมหน้าเว็บ (หน้าสินค้า backend บันทึกเอง)
 export const logAPI = {
   pageView: (page: 'home' | 'products' | 'compare') => api.post('/logs/view', { page }),
 }
@@ -115,9 +93,7 @@ export const compareAPI = {
   getProducts: (ids: string[]) => api.get('/products/compare', { params: { ids: ids.join(',') } }),
 }
 
-//ระบบหลังบ้าน
 export const adminAPI = {
-  // Products
   getDashboard: (params?: { start?: string; end?: string }) => api.get('/admin/dashboard', { params }),
   listProducts: (params?: object) => api.get('/admin/products', { params }),
   getProduct: (id: string) => api.get(`/admin/products/${id}`),
@@ -136,7 +112,6 @@ export const adminAPI = {
     })
   },
 
-  // Master data
   listCategories: () => api.get('/admin/categories'),
   getCategory: (id: string) => api.get(`/admin/categories/${id}`),
   createCategory: (data: object) => api.post('/admin/categories', data),
@@ -149,11 +124,6 @@ export const adminAPI = {
   updateAttribute: (id: number, data: object) => api.put(`/admin/attributes/${id}`, data),
   deleteAttribute: (id: number) => api.delete(`/admin/attributes/${id}`),
 
-  // Added 2026-09-03 — mirrors the reference back-office's own sidebar
-  // sections (ร้านค้า/แบนเนอร์/ข้อมูล Footer/โมเดลสินค้า), one generic
-  // {list,get,create,update,delete} set per table.
-  // ชุดของบทความ/โฆษณาร้านค้า/ข้อมูล SEO ถูกลบทิ้ง 10 ก.ย. 2026 พร้อม
-  // endpoint ฝั่ง backend — ไม่มีหน้าไหนเรียกใช้อยู่แล้ว (เป็น placeholder)
   listShops: (params?: object) => api.get('/admin/shops', { params }),
   getShop: (id: string) => api.get(`/admin/shops/${id}`),
   createShop: (data: object) => api.post('/admin/shops', data),
@@ -183,7 +153,7 @@ export const adminAPI = {
   updateOption: (id: string, data: object) => api.put(`/admin/options/${id}`, data),
   deleteOption: (id: string) => api.delete(`/admin/options/${id}`),
 
-  // นำเข้าจาก Excel (25 ก.ย. 2026) — parse/plan ไม่เขียนอะไร, commit ตรวจซ้ำแล้วค่อยเขียน
+  // นำเข้า Excel: parse/plan ไม่เขียน DB · commit ตรวจซ้ำแล้วค่อยเขียน
   downloadImportTemplate: () => api.get<Blob>('/admin/import/template', { responseType: 'blob', timeout: 60000 }),
   parseImportFile: (file: File) => {
     const form = new FormData()

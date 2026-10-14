@@ -1,3 +1,4 @@
+// ตรวจว่ารหัสใน line/.env ใช้ได้ และดูจำนวน rich menu ที่ตั้งไว้
 import { loadLineEnv, line } from './env.js';
 
 const { secret, token } = loadLineEnv();

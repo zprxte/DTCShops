@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// หน้าเปรียบเทียบ: ตาราง 2–4 ช่อง (สินค้า + โมเดล) คัดกรองคุณสมบัติ เรียงตามสเปค ป้ายเหมือน/ต่าง แชร์ลิงก์
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { X, Share2, ChevronDown, ChevronLeft, Plus, Check, Trash2 } from 'lucide-vue-next'
@@ -39,6 +40,7 @@ const columns = computed<CompareColumn[]>(() =>
     .filter((column): column is CompareColumn => column !== null)
 )
 
+// โมเดลที่คอลัมน์นี้แสดง (ยังไม่เลือก = โมเดลแรก)
 function effectiveModel(column: CompareColumn): ProductModel | null {
   const models = column.product.product_model
   if (!models || models.length === 0) return null
@@ -48,13 +50,12 @@ function effectiveModel(column: CompareColumn): ProductModel | null {
   return models[0]
 }
 
-//คืนราคาที่ควรแสดงของคอลัมน์นี้ (ราคาโมเดลที่เลือกอยู่ ถ้าไม่มีก็ใช้ราคาสินค้า)
+// ราคาของคอลัมน์ (ราคาโมเดล ไม่มีใช้ราคาสินค้า)
 function effectivePrice(column: CompareColumn): number | string | null {
   return effectiveModel(column)?.product_price ?? column.product.product_price
 }
 
-//หน่วยราคาต่อท้ายราคา — หมวด Software ขายแบบสมัครสมาชิก (/ เดือน) ที่เหลือ / ชิ้น
-//กติกาเดียวกับ SUBSCRIPTION_CATEGORY_ID ใน ProductDetailPage.vue
+// หน่วยราคา: หมวด Software "/ เดือน" ที่เหลือ "/ ชิ้น"
 const SUBSCRIPTION_CATEGORY_ID = 'PT-00006'
 function priceUnitLabel(column: CompareColumn): string {
   return langs(column.product.category?.category_id === SUBSCRIPTION_CATEGORY_ID ? 'priceUnitSubscriptionLabel' : 'priceUnitLabel')
@@ -75,7 +76,7 @@ onMounted(() => {
       compareAPI
         .getProducts(uniqueIds)
         .then((res) => {
-          //สร้าง map ไว้ค้นสินค้าได้ทั้งจาก slug และ itm_code เพราะ URL อาจเป็นได้ทั้งสองแบบ
+          // URL อาจเป็น slug หรือ itm_code — ทำ map ค้นได้ทั้งคู่
           const fetchedById = new Map<string, ProductDetail>()
           for (const product of (res.data.products ?? []) as ProductDetail[]) {
             fetchedById.set(product.product_id, product)
@@ -87,7 +88,7 @@ onMounted(() => {
               if (!product) return null
               const model = modelId != null ? product.product_model?.find((v) => v.model_id === modelId) : null
               return {
-                //เก็บเป็น itm_code จริงเสมอ ไม่ใช่ slug
+                // เก็บเป็น itm_code เสมอ
                 product_id: product.product_id,
                 product_name: product.product_name,
                 product_image: product.product_image ?? undefined,
@@ -96,7 +97,7 @@ onMounted(() => {
               }
             })
             .filter((item): item is CompareProduct => item !== null)
-          // กันช่องซ้ำเป๊ะ (สินค้า+โมเดลเดียวกัน) ที่อาจติดมากับลิงก์แชร์ที่ถูกแก้มือ
+          // กันช่องซ้ำเป๊ะจากลิงก์แชร์ที่ถูกแก้มือ
           const seen = new Set<string>()
           const uniqueItems = items.filter((item) => {
             const key = compareItemKey(item)
@@ -111,9 +112,10 @@ onMounted(() => {
   }
 })
 
-//กันปัญหาข้อมูลเก่าทับข้อมูลใหม่ตอนยิงหลาย request ซ้อนกัน (ใช้เฉพาะ response ล่าสุดเท่านั้น)
+// คำขอล่าสุดชนะ
 let fetchProductsRequestId = 0
 
+// โหลดข้อมูลเต็มของสินค้าในตะกร้า
 function fetchProducts() {
   const thisRequestId = ++fetchProductsRequestId
   const uniqueIds = Array.from(new Set(compareStore.items.map((item) => item.product_id)))
@@ -137,13 +139,13 @@ function fetchProducts() {
 }
 
 onMounted(fetchProducts)
-//โหลดสินค้าใหม่เฉพาะตอนรายการสินค้าที่ต่างกันเปลี่ยนไป (เพิ่มโมเดลของสินค้าเดิมไม่ต้องโหลดซ้ำ)
+// โหลดใหม่เฉพาะเมื่อชุดสินค้าเปลี่ยน (เพิ่มโมเดลของสินค้าเดิมไม่ต้องโหลด)
 watch(
   () => Array.from(new Set(compareStore.items.map((item) => item.product_id))).sort().join(','),
   fetchProducts
 )
 
-//บันทึก log การเปรียบเทียบครั้งเดียวต่อการเข้าหน้านี้ เมื่อมีสินค้าอย่างน้อย 2 รายการ
+// บันทึกการเปรียบเทียบครั้งเดียวต่อการเข้าหน้า (≥ 2 ชิ้น)
 watch(
   () => compareStore.items.length,
   (itemCount) => {
@@ -154,6 +156,7 @@ watch(
   { immediate: true }
 )
 
+// เอาคอลัมน์ออก
 function removeColumn(column: CompareColumn) {
   compareStore.removeItemExact(column.item.product_id, column.item.model_id)
 }
@@ -167,6 +170,7 @@ const pickerPendingProduct = ref<ProductCardData | null>(null)
 const pickerModelChoices = ref<ProductModel[]>([])
 const pickerModelLoading = ref(false)
 
+// เปิดป็อปอัปเพิ่ม/เปลี่ยนสินค้า
 function openPicker(mode: string) {
   pickerMode.value = mode
   pickerFilter.value = ''
@@ -183,7 +187,7 @@ function openPicker(mode: string) {
   }
 }
 
-// ปิดป็อปอัปด้วยปุ่ม Esc — มาตรฐานของหน้าต่างซ้อน (ConfirmDialog.vue ก็ทำแบบนี้)
+// Esc ปิดป็อปอัป
 function handlePickerKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') closePicker()
 }
@@ -201,7 +205,7 @@ function closePicker() {
   pickerModelChoices.value = []
 }
 
-//เช็คว่าสินค้านี้ยังมีโมเดลที่ยังไม่ได้เพิ่มเข้าตารางเปรียบเทียบเหลืออยู่มั้ย
+// สินค้านี้ยังมีโมเดลที่ยังไม่อยู่ในตารางไหม
 function hasAddableOption(result: ProductCardData) {
   if (!result.has_models) return !compareStore.isInCompare(result.product_id)
   const modelIds = result.model_ids ?? []
@@ -209,16 +213,14 @@ function hasAddableOption(result: ProductCardData) {
   return modelIds.some((modelId) => !compareStore.isExactInCompare(result.product_id, modelId))
 }
 
-//หมวดหมู่ที่มีให้เลือกใน popup — อ่านจากสินค้าที่โหลดมาแล้ว ไม่ยิง API เพิ่ม
-//ตั้งใจไม่กรองด้วย hasAddableOption ตรงนี้ เพื่อให้ตัวเลือกไม่หายไปกลางคันตอนผู้ใช้
-//เพิ่มสินค้าจนหมดหมวด (ซึ่งจะทำให้ค่าที่เลือกอยู่ชี้ไปหมวดที่ไม่มีในลิสต์แล้ว)
+// หมวดใน popup จากสินค้าที่โหลดมาแล้ว (ไม่กรองด้วย hasAddableOption — ไม่ให้ตัวเลือกหายกลางคัน)
 const pickerCategories = computed(() =>
   [...new Set(allProducts.value.map((product) => product.category_name).filter((name): name is string => !!name))].sort(
     (a, b) => a.localeCompare(b, 'th')
   )
 )
 
-//กรองสินค้าที่จะนำมาเปรียบเทียบ ด้วยหมวดหมู่และคำค้นจากชื่อสินค้า
+// กรองสินค้าใน popup ด้วยหมวดและชื่อ
 const filteredPickerProducts = computed(() => {
   const query = pickerFilter.value.trim().toLowerCase()
   const category = pickerCategory.value
@@ -228,20 +230,20 @@ const filteredPickerProducts = computed(() => {
   return base.filter((product) => product.product_name.toLowerCase().includes(query))
 })
 
-//หาว่าคอลัมน์ไหนกำลังจะถูกเปลี่ยนสินค้า (โหมด "เปลี่ยนสินค้า" เท่านั้น)
+// คอลัมน์ที่กำลังจะถูกเปลี่ยน (โหมดเปลี่ยนสินค้า)
 const pickerTargetColumn = computed(() =>
   pickerMode.value && pickerMode.value !== 'add'
     ? columns.value.find((column) => column.key === pickerMode.value) ?? null
     : null
 )
 
+// เลือกสินค้าใน popup — หลายโมเดลไปขั้นเลือกโมเดลก่อน
 async function selectPickerProduct(result: ProductCardData) {
   if (pickerMode.value === null) return
   if (!result.has_models) {
     finalizePickerSelection(result, null, Number(result.product_price) || 0)
     return
   }
-  //มีหลายโมเดล ต้องโหลดรายการโมเดลมาให้เลือกก่อน
   pickerModelLoading.value = true
   try {
     const res = await productAPI.getById(result.product_id)
@@ -269,6 +271,7 @@ function backToPickerBrowse() {
   pickerModelChoices.value = []
 }
 
+// เพิ่มหรือแทนที่ในตาราง แล้วปิด popup
 function finalizePickerSelection(result: ProductCardData, modelId: string | null, price: number) {
   const newItem: CompareProduct = {
     product_id: result.product_id,
@@ -279,8 +282,7 @@ function finalizePickerSelection(result: ProductCardData, modelId: string | null
   }
   keepTableScrollPosition()
   if (pickerMode.value === 'add') {
-    // ไม่ขยายขนาดตารางให้เอง — ที่นี่ตัวเลือกขนาดอยู่ตรงหน้า ผู้ใช้เพิ่งเลือกเองกับมือ
-    // (ต่างจากหน้าแรก/หน้าสินค้าที่มองไม่เห็นตัวเลือกนี้ ดูคอมเมนต์ใน stores/compare.ts)
+    // ไม่ขยายขนาดตารางให้เอง — ผู้ใช้เพิ่งเลือกขนาดเองในหน้านี้
     compareStore.addItem(newItem, { grow: false })
     closePicker()
     return
@@ -295,7 +297,7 @@ function finalizePickerSelection(result: ProductCardData, modelId: string | null
   closePicker()
 }
 
-//สร้างลิงก์แชร์หน้าเปรียบเทียบโดยใช้ slug ของสินค้าแทน itm_code แล้วคัดลอกใส่คลิปบอร์ด
+// คัดลอกลิงก์แชร์ (ใช้ slug)
 function shareLink() {
   const ids = compareStore.items
     .map((item) => {
@@ -309,7 +311,7 @@ function shareLink() {
   copyLink(url, langs('shareCompareLinkCopied'))
 }
 
-//รวมชื่อคุณสมบัติทั้งหมดที่จะแสดงเป็นแถวในตาราง (รวมของสินค้าและของโมเดลที่เลือก)
+// ชื่อคุณสมบัติทั้งหมดที่เป็นแถวในตาราง (รวมของโมเดลที่เลือก)
 const attributeNames = computed(() =>
   Array.from(new Set(columns.value.flatMap((column) => {
     const baseNames = column.product.product_attribute_value?.map((attrValue) => attrValue.attribute.attribute_name) ?? []
@@ -317,7 +319,7 @@ const attributeNames = computed(() =>
     return [...baseNames, ...modelNames]
   })))
 )
-//
+// อ่านตัวเลขตัวแรกจากค่าสเปค ("2K" = 2000)
 function parseNumber(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null
   const str = String(value)
@@ -329,13 +331,7 @@ function parseNumber(value: string | number | null | undefined): number | null {
   return match ? Number(match[0]) : null
 }
 
-// ดึงตัวเลขจากข้อความสเปคที่เป็น "รายการหลายค่า" คั่นด้วยจุลภาค/สแลช/"และ" — เช่น
-// "กล้องหน้า 1440P (2560 x 1440), กล้องหลัง 1080P (1920 x 1080)" ต้องได้ [1440, 1080]
-// (ค่าของแต่ละรายการ) ไม่ใช่ [1440, 2560, 1440, 1080, 1920, 1080] (ถ้าไล่จับทุกตัวเลข
-// เฉยๆ ตัวเลขในวงเล็บที่เป็นแค่ขนาดพิกเซล W x H จะปนเข้ามาปั่นค่าจริง) — จึงต้องแยกเป็น
-// รายการก่อน แล้วอ่านแค่ "ตัวเลขตัวแรก" ของแต่ละรายการด้วยกฎเดียวกับ parseNumber()
-// เอาตัวมากสุดของทั้งหมดเป็นตัวเปรียบเทียบหลัก, จำนวนรายการเป็นตัวตัดสินเมื่อเท่ากัน
-// (ดูใน compareBySortField())
+// ตัวเลขจากค่าหลายรายการ: แยกรายการก่อนแล้วเอาเลขตัวแรกของแต่ละรายการ (ไม่ให้ W x H ในวงเล็บปน)
 function parseAllNumbers(value: string | number | null | undefined): number[] {
   if (value === null || value === undefined) return []
   const segments = String(value).split(/,|\/|และ|\n/)
@@ -347,7 +343,7 @@ function parseAllNumbers(value: string | number | null | undefined): number[] {
   return numbers
 }
 
-//หาค่าคุณสมบัตินี้ของคอลัมน์ (ค่าของโมเดลที่เลือกจะทับค่าของสินค้าถ้ามีทั้งคู่)
+// ค่าคุณสมบัติของคอลัมน์ (ค่าเฉพาะโมเดลทับค่าร่วม)
 function findAttrValue(column: CompareColumn, attributeName: string) {
   const modelValue = effectiveModel(column)?.product_attribute_value?.find(
     (attrValue) => attrValue.attribute.attribute_name === attributeName
@@ -361,11 +357,12 @@ const SORT_PRICE = '__price__'
 const sortField = ref<string>(SORT_NONE)
 const sortDirection = ref<'asc' | 'desc'>('asc')
 
+// ทิศเรียงเริ่มต้น (ราคา = น้อยไปมาก · สเปค = มากไปน้อย)
 function defaultDirectionFor(field: string): 'asc' | 'desc' {
   return field === SORT_PRICE ? 'asc' : 'desc'
 }
 
-//เปิดการเรียงลำดับตามฟิลด์นี้ พร้อมติ๊ก checkbox ให้ตรงกันอัตโนมัติ
+// เปิดเรียงตามฟิลด์นี้ พร้อมติ๊กให้ตรงกัน
 function setSortFieldOn(field: string, direction: 'asc' | 'desc' = defaultDirectionFor(field)) {
   sortField.value = field
   sortDirection.value = direction
@@ -374,29 +371,30 @@ function setSortFieldOn(field: string, direction: 'asc' | 'desc' = defaultDirect
   }
 }
 
+// ปิดเรียงตามฟิลด์นี้
 function setSortFieldOff(field: string) {
   if (sortField.value === field) sortField.value = SORT_NONE
 }
 
-//สลับเปิด/ปิดการเรียงลำดับตามราคา
+// เปิด/ปิดเรียงตามราคา
 function togglePriceSortOnOff() {
   if (sortField.value === SORT_PRICE) setSortFieldOff(SORT_PRICE)
   else setSortFieldOn(SORT_PRICE)
 }
 
-//คืนค่าที่ dropdown เรียงลำดับของฟิลด์นี้ควรแสดง
+// ค่าที่ dropdown เรียงของฟิลด์นี้แสดง
 function sortValueFor(field: string): '' | 'asc' | 'desc' {
   return sortField.value === field ? sortDirection.value : SORT_NONE
 }
 
-//จัดการตอนเลือกค่าใน dropdown เรียงลำดับของแต่ละแถว
+// เลือกทิศใน dropdown เรียงของแต่ละแถว
 function handleSortSelect(field: string, event: Event) {
   const value = (event.target as HTMLSelectElement).value as '' | 'asc' | 'desc'
   if (value === SORT_NONE) setSortFieldOff(field)
   else setSortFieldOn(field, value)
 }
 
-//หาสเปคที่คำนวณเรียงลำดับได้ (ต้องเป็นตัวเลขอย่างน้อย 2 คอลัมน์ขึ้นไป)
+// สเปคที่เรียงได้ (เป็นตัวเลขอย่างน้อย 2 คอลัมน์)
 const computableAttributeNames = computed(() =>
   attributeNames.value.filter((name) => {
     const numericCount = columns.value.filter((column) => parseNumber(findAttrValue(column, name)) !== null).length
@@ -404,18 +402,18 @@ const computableAttributeNames = computed(() =>
   })
 )
 
-//ถ้าสเปคที่ใช้เรียงอยู่หายไป ให้เลิกเรียงลำดับ
+// สเปคที่ใช้เรียงหายไป = เลิกเรียง
 watch(computableAttributeNames, (availableNames) => {
   if (sortField.value === SORT_NONE || sortField.value === SORT_PRICE) return
   if (!availableNames.includes(sortField.value)) sortField.value = SORT_NONE
 })
 
-//ฟังก์ชันเปรียบเทียบไว้เรียงคอลัมน์ตามฟิลด์ที่เลือก (คอลัมน์ที่ไม่มีค่าจะตกไปท้ายเสมอ)
+// เทียบคอลัมน์ตามฟิลด์ที่เรียง (ไม่มีค่าไปท้ายเสมอ)
 function compareBySortField(columnA: CompareColumn, columnB: CompareColumn): number {
   if (sortField.value === SORT_NONE) return 0
   const sign = sortDirection.value === 'asc' ? 1 : -1
   if (sortField.value === SORT_PRICE) {
-    // ราคา 0/ว่าง = "ราคาติดต่อสอบถาม" ถือว่าไม่มีราคา ตกไปท้ายเสมอทั้งสองทิศทาง
+    // ราคา 0 = ติดต่อสอบถาม ไปท้ายทั้งสองทิศ
     const priceA = parseNumber(effectivePrice(columnA)) || null
     const priceB = parseNumber(effectivePrice(columnB)) || null
     if (priceA === null && priceB === null) return 0
@@ -423,9 +421,7 @@ function compareBySortField(columnA: CompareColumn, columnB: CompareColumn): num
     if (priceB === null) return -1
     return (priceA - priceB) * sign
   }
-  // สเปคทั่วไป — อ่านตัวเลข "ทุกตัว" ในข้อความ (เผื่อเป็นรายการหลายค่า เช่น
-  // "กล้องหน้า 1440P, กล้องหลัง 1080P") ใช้ตัวที่มากสุดของแต่ละคอลัมน์เป็นตัวเทียบหลัก
-  // ถ้าตัวมากสุดเท่ากัน ให้คอลัมน์ที่มี "จำนวนค่า" มากกว่า (เช่นมีกล้องมากกว่า) ชนะ
+  // เทียบตัวเลขมากสุดของแต่ละคอลัมน์ เท่ากันแล้วคอลัมน์ที่มีหลายค่ากว่าชนะ
   const numbersA = parseAllNumbers(findAttrValue(columnA, sortField.value))
   const numbersB = parseAllNumbers(findAttrValue(columnB, sortField.value))
   if (numbersA.length === 0 && numbersB.length === 0) return 0
@@ -439,6 +435,7 @@ function compareBySortField(columnA: CompareColumn, columnB: CompareColumn): num
 
 const NEGATIVE_FEATURE_VALUES = new Set(['', '-', 'ไม่มี', 'ไม่', 'no', 'false', '0', 'x', '✗'])
 
+// คอลัมน์นี้มีคุณสมบัตินี้ไหม (ค่าไม่ว่างและไม่ใช่ "ไม่มี")
 function hasFeature(column: CompareColumn, attributeName: string): boolean {
   const raw = findAttrValue(column, attributeName)
   if (raw === null) return false
@@ -446,14 +443,14 @@ function hasFeature(column: CompareColumn, attributeName: string): boolean {
 }
 
 const selectedFeatures = ref<string[]>([])
-// มือถือเริ่มแบบย่อไว้ — ชิปคุณสมบัติ 20 กว่าอันกินจอเกือบครึ่งก่อนจะเห็นตาราง
+// มือถือเริ่มแบบย่อ
 const featuresOpen = ref(typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches)
 
 function isFeatureSelected(name: string) {
   return selectedFeatures.value.includes(name)
 }
 
-//ติ๊ก/ถอนติ๊กฟีเจอร์ที่ต้องการ พร้อมตั้งให้เป็นตัวเรียงลำดับอัตโนมัติถ้าติ๊กและคำนวณได้
+// ติ๊ก/ถอนติ๊กคุณสมบัติ (คำนวณได้ = ตั้งเป็นตัวเรียงให้)
 function toggleFeature(name: string) {
   const turningOn = !isFeatureSelected(name)
   selectedFeatures.value = turningOn
@@ -466,16 +463,14 @@ function toggleFeature(name: string) {
   }
 }
 
-// ขนาดตารางเปรียบเทียบ (2/3/4 ช่อง) — คำขออาจารย์ 14 ก.ย. 2026
-// ย่อขนาดลงจนช่องไม่พอ = ต้องเอาสินค้าท้ายรายการออก จึงถามยืนยันก่อนเสมอ
+// ย่อขนาดตารางจนช่องไม่พอ ต้องถามยืนยันก่อน
 const pendingSizeChange = ref<number | null>(null)
 
 const sizeShrinkRemovedCount = computed(() =>
   pendingSizeChange.value === null ? 0 : Math.max(0, compareStore.items.length - pendingSizeChange.value)
 )
 
-// คีย์ของช่องที่ผู้ใช้ติ๊กว่าจะเอาออก — ให้เลือกเองว่าสินค้าตัวไหนไป ไม่ใช่ตัดท้ายรายการ
-// ให้อัตโนมัติ เพราะลำดับในตะกร้าคือ "ลำดับที่เพิ่ม" ไม่ได้แปลว่าตัวท้ายสำคัญน้อยที่สุด
+// ช่องที่ผู้ใช้ติ๊กว่าจะเอาออก (เลือกเอง ไม่ตัดท้ายอัตโนมัติ)
 const shrinkRemoveKeys = ref<string[]>([])
 
 function toggleShrinkRemove(key: string) {
@@ -484,17 +479,17 @@ function toggleShrinkRemove(key: string) {
     : [...shrinkRemoveKeys.value, key]
 }
 
-// ต้องติ๊กให้ครบพอดีตามจำนวนที่ต้องเอาออก ไม่ขาดไม่เกิน ปุ่มยืนยันถึงจะกดได้
+// ต้องติ๊กครบพอดีถึงยืนยันได้
 const shrinkSelectionComplete = computed(
   () => shrinkRemoveKeys.value.length === sizeShrinkRemovedCount.value
 )
 
+// กดปุ่มขนาดตาราง — ย่อจนล้นให้เปิดป็อปอัปเลือกสินค้าที่จะเอาออก
 function requestCompareSize(size: number, event: MouseEvent) {
   if (size === compareStore.capacity) return
   if (size < compareStore.items.length) {
     sizeDialogTrigger = event.currentTarget as HTMLElement
-    // ติ๊กท้ายรายการไว้ให้ล่วงหน้า = พฤติกรรมเดิม ผู้ใช้ที่ไม่สนใจว่าตัวไหนออกกดยืนยัน
-    // ได้ทันทีคลิกเดียว ส่วนคนที่สนใจก็ย้ายติ๊กเอง
+    // ติ๊กท้ายรายการไว้ล่วงหน้า กดยืนยันได้ทันที
     shrinkRemoveKeys.value = compareStore.items.slice(size).map(compareItemKey)
     pendingSizeChange.value = size
     return
@@ -508,10 +503,10 @@ function applyCompareSize(size: number) {
   toast.success(langs('compareSizeChanged', { n: size }))
 }
 
+// ยืนยันย่อขนาด
 function confirmSizeChange() {
   if (pendingSizeChange.value === null || !shrinkSelectionComplete.value) return
-  // เอาที่ติ๊กไว้ออกก่อน แล้วค่อยย่อขนาด — ตอน setCapacity() ถูกเรียกจำนวนสินค้าจะพอดี
-  // ช่องแล้ว มันจึงไม่ต้องตัดอะไรเพิ่มเอง (ถ้าย่อก่อนจะโดนตัดท้ายรายการทิ้งไปก่อน)
+  // เอาที่ติ๊กออกก่อนค่อยย่อ ไม่งั้น setCapacity() ตัดท้ายรายการเอง
   for (const key of shrinkRemoveKeys.value) {
     const target = compareStore.items.find((item) => compareItemKey(item) === key)
     if (target) compareStore.removeItemExact(target.product_id, target.model_id)
@@ -526,11 +521,10 @@ function cancelSizeChange() {
 
 const sizeDialogEl = ref<HTMLElement | null>(null)
 const sizeCancelButtonEl = ref<HTMLButtonElement | null>(null)
-// ปุ่มขนาดที่กดเปิดป็อปอัป — เก็บไว้คืนโฟกัสให้ตอนปิด ไม่ให้โฟกัสเด้งกลับไปต้นหน้า
+// ปุ่มขนาดที่เปิดป็อปอัป — คืนโฟกัสตอนปิด
 let sizeDialogTrigger: HTMLElement | null = null
 
-// Esc ปิด + ขัง Tab ไว้ในป็อปอัป (ไม่งั้นกด Tab แล้วโฟกัสหลุดไปโดนตารางที่อยู่ข้างหลัง
-// ทั้งที่มองไม่เห็นว่าโฟกัสอยู่ไหน) — ป็อปอัปนี้มีแค่ 2 ปุ่ม จึงวนเองได้ไม่ต้องใช้ไลบรารี
+// Esc ปิด + ขัง Tab ไว้ในป็อปอัป
 function handleSizeDialogKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     cancelSizeChange()
@@ -554,7 +548,7 @@ function handleSizeDialogKeydown(event: KeyboardEvent) {
 watch(pendingSizeChange, (pending) => {
   if (pending !== null) {
     window.addEventListener('keydown', handleSizeDialogKeydown)
-    //โฟกัสไปที่ "ยกเลิก" ก่อน ไม่ใช่ปุ่มที่ลบสินค้าทิ้ง — กด Enter พลาดจะได้ไม่เสียของ
+    // โฟกัส "ยกเลิก" ก่อน กด Enter พลาดจะไม่เสียของ
     nextTick(() => sizeCancelButtonEl.value?.focus())
   } else {
     window.removeEventListener('keydown', handleSizeDialogKeydown)
@@ -563,24 +557,24 @@ watch(pendingSizeChange, (pending) => {
   }
 })
 
-//ล้างสินค้าออกจากตะกร้าเปรียบเทียบทั้งหมด (ฟีเจอร์ที่ติ๊กไว้ถูกล้างตามเองผ่าน watch attributeNames)
+// ล้างตะกร้าทั้งหมด
 function clearCompare() {
   compareStore.clearAll()
 }
 
-//ล้างฟีเจอร์ที่ติ๊กไว้ทั้งหมดและเลิกเรียงลำดับ (ไม่ลบสินค้าออกจากตาราง)
+// ล้างคุณสมบัติที่ติ๊กและเลิกเรียง (ไม่ลบสินค้า)
 function clearAllFeatures() {
   selectedFeatures.value = []
   setSortFieldOff(sortField.value)
 }
 
-//ถ้าฟีเจอร์ที่ติ๊กไว้หายไปจากตาราง (สินค้าที่มีฟีเจอร์นั้นถูกลบออก) ให้ถอนติ๊กออก
+// คุณสมบัติที่ติ๊กหายไปจากตาราง = ถอนติ๊ก
 watch(attributeNames, (availableAttrNames) => {
   const kept = selectedFeatures.value.filter((name) => availableAttrNames.includes(name))
   if (kept.length !== selectedFeatures.value.length) selectedFeatures.value = kept
 })
 
-//นับว่าแต่ละคอลัมน์ตรงกับฟีเจอร์ที่ติ๊กไว้กี่ข้อ (ไว้แสดงตัวเลขกำกับคอลัมน์)
+// จำนวนคุณสมบัติที่ติ๊กไว้ที่แต่ละคอลัมน์ตรง
 const featureMatchByKey = computed<Map<string, number> | null>(() => {
   if (selectedFeatures.value.length === 0) return null
   const matchByKey = new Map<string, number>()
@@ -591,6 +585,7 @@ const featureMatchByKey = computed<Map<string, number> | null>(() => {
   return matchByKey
 })
 
+// คอลัมน์เรียงแล้ว: ตรงคุณสมบัติที่ติ๊กมากสุดก่อน แล้วตามฟิลด์ที่เรียง
 const sortedColumns = computed(() => {
   const entries = columns.value.map((column, originalIndex) => ({ column, originalIndex }))
   entries.sort((entryA, entryB) => {
@@ -606,8 +601,7 @@ const sortedColumns = computed(() => {
   return entries.map((entry) => entry.column)
 })
 
-//แนะนำคอลัมน์แรกเฉพาะตอนที่มันชนะคอลัมน์ถัดไปจริงๆ เท่านั้น —
-//ถ้าฟีเจอร์ที่ติ๊กไว้ตรงกันหมดและไม่มีสเปคตัวเลขให้ตัดสิน ก็ไม่มีตัวไหนดีกว่า จึงไม่แนะนำ
+// ป้าย "แนะนำ" เฉพาะเมื่อคอลัมน์แรกชนะคอลัมน์ถัดไปจริง
 const highlightIndex = computed(() => {
   const [first, second] = sortedColumns.value
   if (!first || !second) return -1
@@ -620,9 +614,9 @@ const highlightIndex = computed(() => {
   return -1
 })
 
-// เหมือนกัน/ต่างกัน
 const onlyShowDifferences = ref(false)
 
+// ค่าในแถวต่างกันไหม
 function valuesDiffer(values: (string | number | null | undefined)[]): boolean {
   if (values.length < 2) return false
   const normalized = values.map((value) => (value === null || value === undefined || value === '' ? null : String(value).replace(/\s+/g, ' ').trim()))
@@ -639,10 +633,7 @@ const attributeDiffers = computed(() => {
   return map
 })
 
-// กล่องเลือกฟีเจอร์ซ่อนหัวข้อที่ค่าเหมือนกันหมด ตามสวิตช์เดียวกับตาราง — ติ๊กหัวข้อ
-// ที่ทุกตัวมีค่าเท่ากันไม่ได้ช่วยจัดอันดับอะไรเลย เพราะทุกตัวตรงเท่ากันหมด
-// ยกเว้นหัวข้อที่ติ๊กค้างไว้อยู่ ยังต้องโชว์เสมอ ไม่งั้นตัวกรองที่ทำงานอยู่จะหายไป
-// จากสายตาแต่ยังนับใน "ตรงกับที่เลือก X/Y" ทำให้ตัวเลขไม่ตรงกับที่เห็น
+// ซ่อนหัวข้อที่ค่าเหมือนกันหมดในกล่องคุณสมบัติ (ยกเว้นที่ติ๊กอยู่)
 const visibleFeatureNames = computed(() =>
   attributeNames.value.filter(
     (name) => !onlyShowDifferences.value || attributeDiffers.value.get(name) || isFeatureSelected(name)
@@ -653,21 +644,17 @@ const showPriceFeature = computed(
   () => !onlyShowDifferences.value || priceDiffers.value || sortField.value === SORT_PRICE
 )
 
-//ไม่นับราคา — ราคาอยู่ในหัวคอลัมน์ ไม่ใช่แถวในตาราง (ถ้านับ ตารางจะว่างโดยไม่มีข้อความบอก)
+// ไม่นับราคา เพราะราคาอยู่ในหัวคอลัมน์
 const anyRowDiffers = computed(
   () => categoryDiffers.value || Array.from(attributeDiffers.value.values()).some(Boolean)
 )
 
-// จำนวนช่องว่างที่ยังเพิ่มสินค้าได้ — โชว์ครบทุกช่องที่เหลือทันที
-// แทนที่จะโชว์ทีละช่องเดียวแล้วค่อยขึ้นช่องถัดไปหลังเพิ่มสินค้า
-// จำนวนช่องทั้งหมดมาจากขนาดตารางที่ผู้ใช้เลือก (2/3/4) ไม่ใช่ 4 ตายตัว
+// ช่องว่างที่ยังเพิ่มได้ตามขนาดตาราง
 const emptySlotCount = computed(() => Math.max(0, compareStore.capacity - columns.value.length))
 
 const totalColumnCount = computed(() => 1 + sortedColumns.value.length + emptySlotCount.value)
 
-// เปลี่ยนโมเดลของคอลัมน์ — ถ้าโมเดลที่เลือกถูกอีกคอลัมน์ของสินค้าตัวเดียวกันถือไว้อยู่แล้ว
-// ให้ "สลับกัน" (อีกคอลัมน์รับโมเดลเดิมของคอลัมน์นี้ไป) แทนที่จะปล่อยให้กลายเป็น
-// 2 คอลัมน์ที่เหมือนกันเป๊ะ ซึ่งเทียบกันไปก็ไม่ได้ข้อมูลอะไรเพิ่ม (คำขอผู้ใช้ 2026-09-09)
+// เลือกโมเดลที่อีกคอลัมน์ของสินค้าเดียวกันถืออยู่ = สลับกัน
 function onModelSelect(column: CompareColumn, modelId: string) {
   const model = column.product.product_model?.find((v) => v.model_id === modelId)
   if (!model) return
@@ -675,8 +662,7 @@ function onModelSelect(column: CompareColumn, modelId: string) {
   if (currentModelId === modelId) return
   keepTableScrollPosition()
 
-  // เทียบด้วยโมเดลที่ "แสดงอยู่จริง" (effectiveModel) ไม่ใช่ค่าที่เก็บไว้ในตะกร้า
-  // เพราะช่องที่ยังไม่เคยเลือกโมเดลจะเก็บเป็น null แต่หน้าจอโชว์โมเดลตัวแรกอยู่
+  // เทียบด้วยโมเดลที่แสดงจริง (ช่องที่ยังไม่เลือกเก็บ null แต่แสดงโมเดลแรก)
   const conflict = columns.value.find(
     (other) =>
       other.key !== column.key &&
@@ -702,21 +688,17 @@ function onModelSelect(column: CompareColumn, modelId: string) {
 const tableWrapperEl = ref<HTMLElement | null>(null)
 const tableEl = ref<HTMLTableElement | null>(null)
 
-// เปลี่ยน/เพิ่มสินค้าผ่านป็อปอัปแล้วรายการสินค้าเปลี่ยน → fetchProducts() ตั้ง loading → ตารางถูก
-// v-if ถอดออกแล้วสร้างใหม่ ตำแหน่งปัดแนวนอนกลับไป 0 (ตาราง 3–4 ช่องบนมือถือเด้งไปคอลัมน์แรก)
-// จำตำแหน่งไว้ก่อน แล้วคืนค่าหลังตารางวาดเสร็จ — ทั้งกรณีโหลดใหม่และกรณีแค่วาดคอลัมน์ใหม่
-// (เปลี่ยนโมเดล: key ของคอลัมน์มีรหัสโมเดล คอลัมน์จึงถูกสร้างใหม่แม้ไม่โหลดข้อมูล)
+// จำตำแหน่งปัดแนวนอนไว้ เปลี่ยน/เพิ่มสินค้าแล้วตารางถูกสร้างใหม่จะคืนให้
 let pendingTableScrollLeft: number | null = null
 
 function keepTableScrollPosition() {
   if (!tableWrapperEl.value) return
   pendingTableScrollLeft = tableWrapperEl.value.scrollLeft
-  // setTimeout ไม่ใช่ nextTick — nextTick ที่เรียกก่อนแก้ store จะรันก่อน watcher ที่สั่ง
-  // fetchProducts() ตอนนั้น loading ยังเป็น false จึงคืนค่าเร็วเกินแล้วล้างค่าที่จำไว้ทิ้ง
-  // (ตารางถูกสร้างใหม่ทีหลังที่ 0) · ถ้ามีการโหลด watch(loading) ด้านล่างเป็นคนคืนค่าแทน
+  // setTimeout ไม่ใช่ nextTick — ต้องรอ watcher สั่งโหลดก่อน (มีการโหลด watch(loading) เป็นคนคืนค่า)
   setTimeout(restoreTableScrollPosition, 0)
 }
 
+// คืนตำแหน่งปัดแนวนอนที่จำไว้
 function restoreTableScrollPosition() {
   if (pendingTableScrollLeft === null || loading.value) return
   const wrapper = tableWrapperEl.value
@@ -724,7 +706,7 @@ function restoreTableScrollPosition() {
   const left = pendingTableScrollLeft
   pendingTableScrollLeft = null
   wrapper.scrollLeft = left
-  //เผื่อ scroll-snap จับตำแหน่งใหม่หลังเฟรมแรก
+  // เผื่อ scroll-snap จับตำแหน่งใหม่หลังเฟรมแรก
   requestAnimationFrame(() => { wrapper.scrollLeft = left })
 }
 
@@ -742,6 +724,7 @@ const labelColumnWidth = ref(160)
 const columnWidthByKey = ref<Map<string, number>>(new Map())
 const addSlotColumnWidth = ref(220)
 
+// ให้คอลัมน์หัวจำลองกว้างเท่าตารางจริง
 function syncCloneColumnWidths() {
   const headerCells = tableEl.value?.querySelector('thead tr')?.children
   if (!headerCells || headerCells.length === 0) return
@@ -759,28 +742,29 @@ function syncCloneColumnWidths() {
   }
 }
 
+// ระยะจากบนจอที่หัวจำลองต้องเริ่ม (header + แผงตัวกรองที่ตรึงบนจอ lg)
 function stickyOffsetPx(): number {
   const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sticky-header-h')) || 0
-  // แผงตัวกรองตรึงเฉพาะจอ lg (≥ 1024px) — มือถือ/แท็บเล็ตมันเลื่อนหายไปกับหน้า จึงไม่นับความสูง
+  // แผงตัวกรองตรึงเฉพาะจอ lg
   const panel = filterPanelEl.value
-  // ใช้ความสูงจริงแบบมีทศนิยม — offsetHeight ปัดเป็นจำนวนเต็ม เหลือช่องให้ตารางโผล่ระหว่างแผงกับหัวจำลอง (เห็นชัดตอนจอสเกล 125%/ซูมเบราว์เซอร์)
+  // ใช้ความสูงทศนิยม — offsetHeight ปัดเศษแล้วเห็นช่องตอนจอสเกล 125%
   const filterH = panel && getComputedStyle(panel).position === 'sticky' ? panel.getBoundingClientRect().height : 0
   return headerH + filterH
 }
 
 let scrollFrame = 0
-//คำนวณตำแหน่ง/การแสดงผลของแถบหัวตารางจำลองตอนเลื่อนหน้าจอ
+// แสดง/ซ่อนหัวตารางจำลองตามการเลื่อน
 function handleStickyScroll() {
   if (scrollFrame) return
   scrollFrame = requestAnimationFrame(() => {
     scrollFrame = 0
     const offset = stickyOffsetPx()
-    // แผงตัวกรองค้างอยู่บนสุดแล้ว (เฉพาะจอ lg ที่มันตรึง) → ตัดขอบมนออกให้ต่อกับหัวจำลองเป็นแถบเดียว
+    // แผงตรึงอยู่บนสุดแล้ว ตัดขอบมนให้ต่อกับหัวจำลอง
     const panel = filterPanelEl.value
     const panelIsSticky = !!panel && getComputedStyle(panel).position === 'sticky'
     const panelRect = panel?.getBoundingClientRect()
     filterPanelStuck.value = panelIsSticky && panelRect!.top <= offset - panelRect!.height + 0.5
-    // ซ้อนใต้แผง 1px (หัวจำลอง z ต่ำกว่าแผง) กันรอยต่อจากการปัดพิกเซลของจอสเกลไม่เต็ม
+    // ซ้อนใต้แผง 1px กันรอยต่อจากการปัดพิกเซล
     cloneTopPx.value = panelIsSticky ? offset - 1 : offset
     if (sentinelEl.value) {
       cloneHeaderVisible.value = sentinelEl.value.getBoundingClientRect().top <= offset
@@ -792,7 +776,7 @@ function handleStickyScroll() {
   })
 }
 
-//ผูก event scroll ใหม่ทุกครั้งที่ element เปลี่ยน (เพราะ v-if ทำให้ mount/unmount ใหม่ได้)
+// element ถูก v-if สร้างใหม่ได้ ต้องผูก scroll ใหม่
 watch(tableWrapperEl, (el, previousEl) => {
   previousEl?.removeEventListener('scroll', handleStickyScroll)
   el?.addEventListener('scroll', handleStickyScroll, { passive: true })
@@ -809,9 +793,7 @@ watch(filterPanelEl, (el) => {
 })
 watch(featuresOpen, () => nextTick(handleStickyScroll))
 
-// ความกว้างคอลัมน์จอมือถือ/แท็บเล็ตคิดจากความกว้างจริงของกรอบตาราง ไม่ใช้ 100vw
-// เบราว์เซอร์ในแอป LINE บน iPhone ให้ค่า 100vw ไม่ตรงกับจอ ช่องสินค้าเลยกว้างเกินจนเห็นทีละช่อง
-// คลาส calc(100vw …) บน <th> ยังอยู่เป็นค่าตั้งต้นก่อนวัดได้ · จอ lg ขึ้นไปใช้ 220px ตามคลาสเหมือนเดิม
+// ความกว้างคอลัมน์มือถือ/แท็บเล็ตวัดจากกรอบตารางจริง — LINE บน iPhone ให้ 100vw ผิด
 const tableWrapperWidth = ref(0)
 let wrapperResizeObserver: ResizeObserver | null = null
 watch(tableWrapperEl, (el) => {
@@ -822,7 +804,7 @@ watch(tableWrapperEl, (el) => {
     tableWrapperWidth.value = el.clientWidth
   }
 })
-// กรอบตาราง = จอ − 34px (ขอบหน้า + เส้นกรอบ ตัวเลขเดียวกับในคลาส) จึงใช้แทนความกว้างจอตอนเทียบจุดตัด sm / lg
+// ความกว้างช่องตามขนาดจอ (กรอบตาราง = จอ − 34px)
 const slotWidthStyle = computed(() => {
   const width = tableWrapperWidth.value
   if (!width || width + 34 >= 1024) return undefined
@@ -830,8 +812,7 @@ const slotWidthStyle = computed(() => {
   return { width: `${width / visibleColumns}px` }
 })
 const rowLabelWidthStyle = computed(() => (tableWrapperWidth.value ? { width: `${tableWrapperWidth.value}px` } : undefined))
-// ตั้งความกว้างทั้งตารางเองด้วย — ใน LINE บน iPhone ย่อขนาดตาราง (4 → 3/2) แล้วตาราง table-layout: fixed
-// ไม่คำนวณความกว้างคอลัมน์ใหม่ ค้างหน้าตาเดิม (ขยายขนาดไม่เป็น) · คู่กับ :key ที่สร้างตารางใหม่ทุกครั้งที่เปลี่ยนขนาด
+// ตั้งความกว้างตารางเอง + สร้างตารางใหม่ทุกครั้งที่เปลี่ยนขนาด — LINE บน iPhone ไม่คำนวณคอลัมน์ใหม่เอง
 const tableWidthStyle = computed(() => {
   const width = tableWrapperWidth.value
   if (!width || width + 34 >= 1024) return undefined
@@ -846,7 +827,7 @@ watch(() => compareStore.capacity, () => nextTick(() => {
   syncCloneColumnWidths()
 }))
 
-//คอยติดตามความกว้างตารางที่เปลี่ยนไป (เช่น รูปโหลดเสร็จ) แล้ว sync หัวตารางจำลองให้ตรงกัน
+// ความกว้างตารางเปลี่ยน (รูปโหลด) → sync หัวจำลอง
 let tableResizeObserver: ResizeObserver | null = null
 watch(tableEl, (el) => {
   tableResizeObserver?.disconnect()
@@ -856,7 +837,7 @@ watch(tableEl, (el) => {
   }
   syncCloneColumnWidths()
 })
-//sync หัวตารางจำลองใหม่ทุกครั้งที่ลำดับคอลัมน์เปลี่ยน (จากการเรียงลำดับ)
+// ลำดับคอลัมน์เปลี่ยน → sync หัวจำลอง
 watch(
   () => sortedColumns.value.map((column) => column.key).join(','),
   () => nextTick(syncCloneColumnWidths)
@@ -875,18 +856,16 @@ onBeforeUnmount(() => {
   filterResizeObserver?.disconnect()
   wrapperResizeObserver?.disconnect()
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
-  // เผื่อผู้ใช้เปลี่ยนหน้าไปตอนป็อปอัปยังเปิดอยู่ — watch จะไม่ถูกเรียกอีกแล้ว
+  // เปลี่ยนหน้าตอนป็อปอัปเปิดอยู่ — ถอด listener เอง
   window.removeEventListener('keydown', handlePickerKeydown)
   window.removeEventListener('keydown', handleSizeDialogKeydown)
 })
 </script>
 
 <template>
-  <!--เรียกใช้ translations-->
   <h1 class="sr-only">{{ langs('navCompare') }}</h1>
 
   <div class="space-y-4">
-    <!-- เพิ่มสินค้า / เปลี่ยนสินค้า -->
     <div
       v-if="pickerMode !== null"
       class="fixed inset-0 z-40 bg-black/30 flex items-center justify-center p-4"
@@ -912,7 +891,6 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="pickerTargetColumn && !pickerPendingProduct" class="text-xs text-gray-500 mb-2 truncate">{{ pickerTargetColumn.product.product_name }}</p>
 
-        <!-- ขั้นที่ 2: เลือกโมเดล (สำหรับสินค้าที่มีหลายโมเดล) -->
         <template v-if="pickerPendingProduct">
           <p class="text-xs text-gray-500 mb-2 truncate">{{ pickerPendingProduct.product_name }}</p>
           <ul class="max-h-96 overflow-y-auto divide-y divide-gray-100">
@@ -932,7 +910,6 @@ onBeforeUnmount(() => {
           </ul>
         </template>
 
-        <!-- ขั้นที่ 1: เลือกสินค้าจากรายการทั้งหมด -->
         <template v-else>
           <div class="flex gap-2 mb-2">
             <input
@@ -978,7 +955,6 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
-    <!-- ป็อปอัปยืนยันตอนย่อขนาดตารางจนสินค้าที่มีอยู่ล้นช่อง -->
     <div
       v-if="pendingSizeChange !== null"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
@@ -999,7 +975,6 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
-        <!-- เลือกเองว่าจะเอาสินค้าตัวไหนออก — ติ๊กท้ายรายการไว้ให้ล่วงหน้าแล้ว -->
         <ul class="space-y-1.5 max-h-64 overflow-y-auto -mx-1 px-1">
           <li v-for="item in compareStore.items" :key="compareItemKey(item)">
             <button
@@ -1028,8 +1003,7 @@ onBeforeUnmount(() => {
               />
               <ProductAvatar v-else :name="item.product_name" :size="36" class-name="rounded-lg shrink-0" />
               <span class="min-w-0 flex-1 text-sm text-navy-900 line-clamp-2">{{ item.product_name }}</span>
-              <!-- red-700/gray-600 ไม่ใช่ 600/400 — ตัวอักษร 11px ต้องผ่าน AA 4.5:1
-                   (red-600 บนพื้น red-50 ได้แค่ 4.41, gray-400 บนขาวได้ 2.53) -->
+              <!-- red-700 / gray-600 ให้ตัว 11px ผ่าน AA -->
               <span
                 class="shrink-0 text-[11px] font-medium"
                 :class="shrinkRemoveKeys.includes(compareItemKey(item)) ? 'text-red-700' : 'text-gray-600'"
@@ -1040,7 +1014,6 @@ onBeforeUnmount(() => {
           </li>
         </ul>
 
-        <!-- ตัวนับ: ต้องติ๊กครบพอดีถึงจะยืนยันได้ · role=status ให้ screen reader รู้ตัวเลขที่เปลี่ยน -->
         <p
           role="status"
           class="text-xs tabular-nums"
@@ -1070,7 +1043,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- รวมขนาดตารางและตัวกรองไว้ในแผงเดียว ขนาดยังเลือกได้แม้มีสินค้าไม่ครบสองชิ้น -->
     <div
       ref="filterPanelEl"
       class="bg-white border border-gray-200 shadow-sm px-3 py-2.5 sm:px-4"
@@ -1135,7 +1107,6 @@ onBeforeUnmount(() => {
 
           <button v-if="selectedFeatures.length > 0 || sortField !== SORT_NONE" type="button" @click="clearAllFeatures" class="flex items-center justify-center gap-1.5 min-h-9 [@media(pointer:coarse)]:min-h-11 px-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">{{ langs('clearAllFeaturesButton') }}</button>
 
-          <!-- ล้างสินค้าออกจากตะกร้าทั้งหมด — คนละอย่างกับล้างฟีเจอร์ที่ติ๊กไว้ -->
           <button type="button" @click="clearCompare" class="flex items-center justify-center gap-1.5 min-h-9 [@media(pointer:coarse)]:min-h-11 px-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">
             <Trash2 aria-hidden="true" class="w-4 h-4" />
             {{ langs('clearCompareButton') }}
@@ -1156,7 +1127,6 @@ onBeforeUnmount(() => {
       </div>
       <div id="compare-feature-options" v-show="columns.length > 1 && featuresOpen && (visibleFeatureNames.length > 0 || showPriceFeature)" class="mt-2.5 border-t border-gray-100 pt-2.5 space-y-2">
         <p class="text-xs leading-relaxed text-gray-500">{{ langs('featureFilterHint') }}</p>
-        <!-- ตัวเรียงโผล่เฉพาะคุณสมบัติที่เลือกอยู่ -->
         <div class="flex flex-wrap gap-1.5">
           <div
             v-if="showPriceFeature"
@@ -1220,15 +1190,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- หัวตารางจำลอง แสดงแทนหัวตารางจริงตอนเลื่อนหน้าจอเลยขอบไปแล้ว
-         กล่องนอกสูง 0 และมีอยู่ตลอด หัวจำลองจึงลอยทับตาราง ไม่ดันตารางลง —
-         ถ้าหัวจำลองกินที่ใน flow เอง ตอนโผล่มันจะดัน sentinel ลงจนเงื่อนไขกลับเป็นเท็จ แล้วหาย-โผล่วนไปมา -->
+    <!-- หัวตารางจำลอง: กล่องนอกสูง 0 ให้ลอยทับ ไม่ดันตาราง (ไม่งั้นหาย-โผล่วนไปมา) -->
     <div
       v-if="columns.length > 1"
       class="sticky z-[25] h-0 !mt-0"
       :style="{ top: `${cloneTopPx}px` }"
     >
-    <!-- z-[25] ต้องสูงกว่าเซลล์ชื่อหัวข้อที่ตรึงซ้าย (sticky left-0 z-20) ของตารางจริง ไม่งั้นหัว "คุณสมบัติ" สีเทาโผล่ทับหัวจำลอง -->
+    <!-- z-[25] ต้องสูงกว่าเซลล์ชื่อหัวข้อที่ตรึงซ้าย (z-20) -->
     <div
       v-if="cloneHeaderVisible"
       class="bg-white max-lg:bg-gray-50/95 max-lg:backdrop-blur-sm border border-gray-100 lg:border-t-0 shadow-sm overflow-hidden"
@@ -1243,7 +1211,6 @@ onBeforeUnmount(() => {
           class="shrink-0 border-r border-gray-100 max-lg:border-gray-200 px-3 py-2 max-lg:px-2 flex flex-col gap-1.5 max-lg:text-center"
           :style="{ width: `${columnWidthByKey.get(column.key) ?? 220}px` }"
         >
-          <!-- มือถือ: หัวค้างแบบกะทัดรัด ไม่มีรูป เหลือชื่อ + ปุ่มเปลี่ยนสินค้า + เลือกโมเดล -->
           <div class="flex items-center gap-2">
             <img loading="lazy" decoding="async"
               v-if="column.product.product_image"
@@ -1264,7 +1231,6 @@ onBeforeUnmount(() => {
               <X aria-hidden="true" class="w-3.5 h-3.5" />
             </button>
           </div>
-          <!-- ปุ่มเปลี่ยนสินค้า + เลือกโมเดล ชุดเดียวกับหัวตารางจริง ใช้ได้โดยไม่ต้องเลื่อนกลับขึ้นไป -->
           <div class="grid gap-1.5" :class="column.product.product_model && column.product.product_model.length > 0 ? 'grid-cols-2' : 'grid-cols-1'">
             <button
               type="button"
@@ -1293,8 +1259,6 @@ onBeforeUnmount(() => {
     </div>
     </div>
 
-    <!-- โครงร่างตารางเปรียบเทียบระหว่างโหลด (คอลัมน์ซ้าย = ชื่อหัวข้อ, ที่เหลือ
-         = สินค้าที่กำลังดึงข้อมูลอยู่) -->
     <div v-if="loading" class="rounded-2xl border border-gray-100 shadow-sm bg-white p-4 space-y-3" role="status" :aria-label="langs('loading')">
       <div class="flex gap-3">
         <SkeletonBox class="w-40 h-24 shrink-0 rounded-xl" />
@@ -1307,10 +1271,9 @@ onBeforeUnmount(() => {
     </div>
     <p v-if="error" class="text-red-600 text-sm">{{ error }}</p>
 
-    <!-- ตารางแสดงเสมอแม้ตะกร้าจะยังว่าง เพื่อให้เริ่มเปรียบเทียบได้เลย -->
     <div v-if="!loading && !error" class="rounded-2xl border border-gray-100 shadow-sm bg-white">
         <div ref="sentinelEl"></div>
-        <!-- มือถือ: คอลัมน์สินค้ากว้างครึ่งจอ เห็นทีละ 2 ชิ้น ตาราง 3–4 ช่องเลื่อนแล้วหยุดตรงคอลัมน์พอดี -->
+        <!-- มือถือ: คอลัมน์กว้างครึ่งจอ ปัดแล้วหยุดพอดีคอลัมน์ -->
         <div ref="tableWrapperEl" class="overflow-x-auto max-lg:snap-x max-lg:snap-mandatory" :style="{ '--compare-cols': compareStore.capacity }">
         <table ref="tableEl" :key="`cols-${compareStore.capacity}`" class="w-full border-separate border-spacing-0" :style="[{ tableLayout: 'fixed' }, tableWidthStyle]">
           <thead>
@@ -1318,9 +1281,7 @@ onBeforeUnmount(() => {
               <th class="sticky left-0 z-20 w-40 max-lg:hidden bg-gray-50 border-b border-r border-gray-200 px-4 pb-4 text-left align-bottom">
                 <span class="text-sm font-medium text-gray-500">{{ langs('featureColumnLabel') }}</span>
               </th>
-              <!-- หัวคอลัมน์แบบการ์ด ใช้ชุดเดียวกันทุกขนาดจอ (18 ก.ย. 2026 ตาม wireframe แอป):
-                   รูปใหญ่ (✕ / ป้ายแนะนำวางทับมุม) → ชื่อ 2 บรรทัด → ราคาตัวหนา
-                   → ปุ่มเม็ดยา "เปลี่ยนสินค้า" → เลือกโมเดล · ราคาอยู่ตรงนี้แล้วจึงไม่มีแถว "ราคา" ในตาราง -->
+              <!-- หัวคอลัมน์การ์ด: รูป → ชื่อ → ราคา → เปลี่ยนสินค้า | เลือกโมเดล (ไม่มีแถวราคาในตาราง) -->
               <th
                 v-for="(column, index) in sortedColumns"
                 :key="column.key"
@@ -1355,7 +1316,6 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div class="mt-2 flex flex-col gap-1.5">
-                  <!-- สินค้าที่มีโมเดลโชว์โมเดลในช่องเลือกใต้ปุ่มเปลี่ยนสินค้าแล้ว ชื่อจึงไม่ต่อท้ายโมเดลซ้ำ -->
                   <p class="text-sm leading-snug text-navy-900 line-clamp-2 min-h-[2.5rem]">
                     {{ column.product.product_name }}
                   </p>
@@ -1364,8 +1324,6 @@ onBeforeUnmount(() => {
                     {{ effectivePrice(column) ? `฿${Number(effectivePrice(column)).toLocaleString()}` : langs('priceOnRequest') }}
                     <span v-if="Number(effectivePrice(column))" class="text-xs font-normal text-gray-500">{{ priceUnitLabel(column) }}</span>
                   </p>
-                  <!-- ปุ่มเปลี่ยนสินค้า + เลือกโมเดล แถวเดียวกัน กว้างเท่ากันคนละครึ่ง สูงเท่ากัน
-                       (สินค้าโมเดลเดียวไม่มีช่องเลือก ปุ่มจึงกว้างเต็มแถว) -->
                   <div class="grid gap-1.5" :class="column.product.product_model && column.product.product_model.length > 0 ? 'grid-cols-2' : 'grid-cols-1'">
                   <button
                     type="button"
@@ -1392,7 +1350,6 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
               </th>
-              <!-- ช่องว่างเปล่าที่ยังเพิ่มสินค้าได้ — โชว์ครบทุกช่องที่เหลือตามขนาดตารางที่เลือกไว้ -->
               <th v-for="n in emptySlotCount" :key="`add-${n}`" class="bg-gray-50 border-b border-gray-200 p-3 lg:p-4 align-middle w-[220px] max-sm:w-[calc((100vw_-_34px)/2)] sm:max-lg:w-[calc((100vw_-_34px)/var(--compare-cols))] max-lg:snap-start" :style="slotWidthStyle">
                 <button
                   type="button"
@@ -1406,10 +1363,7 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <!-- มือถือ (< lg): ชื่อหัวข้อขึ้นเป็นแถวเต็มความกว้างเหนือค่า แทนคอลัมน์ซ้าย 160px ที่ถูกซ่อน
-                 (max-lg:hidden) — สินค้า 2 ชิ้นจึงวางคู่กันพอดีจอ · div ข้างในตรึงซ้าย (sticky left
-                 อย่างเดียว ปลอดภัยกับเซลล์ตาราง) ชื่อหัวข้อจึงไม่เลื่อนหายตอนปัดดูคอลัมน์ 3–4 -->
-            <!-- ไม่มีแถว "ราคา" — ราคาอยู่ในหัวคอลัมน์ทุกขนาดจอแล้ว (18 ก.ย. 2026) -->
+            <!-- จอ < lg: ชื่อหัวข้อเป็นแถวเต็มความกว้างเหนือค่า ตรึงซ้ายด้วย sticky left (ปลอดภัยกับเซลล์ตาราง) -->
             <template v-if="!onlyShowDifferences || categoryDiffers">
               <tr class="lg:hidden">
                 <td :colspan="totalColumnCount - 1" class="bg-white p-0">

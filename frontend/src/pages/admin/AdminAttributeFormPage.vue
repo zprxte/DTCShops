@@ -6,12 +6,7 @@ import { adminAPI } from '../../services/api'
 import { toast } from '../../stores/toast'
 import AutoGrowTextarea from '../../components/common/AutoGrowTextarea.vue'
 
-// เพิ่ม/แก้ไขคุณสมบัติสินค้า — หน้าฟอร์มเดี่ยว (ไม่ใช่ popup อีกต่อไป) ตาม
-// แพทเทิร์นเดียวกับ AdminBannerFormPage.vue/AdminProductEditPage.vue —
-// component เดียวรองรับทั้งสร้าง/แก้ไข (isNew = !route.params.id) — เพิ่ม 4
-// ก.ย. 2026: ตั้งค่าคุณสมบัตินี้ให้สินค้าที่เลือกได้ตรงจากฟอร์มนี้เลย (แทนที่
-// จะต้องไปเปิดฟอร์มสินค้าทีละตัว) — tbl_attribute เองไม่ผูกกับหมวดหมู่สินค้า
-// เลย (ตาราง Category_attribute เดิมถูกลบไปตั้งแต่ 14 ส.ค. 2026)
+// ฟอร์มเพิ่ม/แก้ไขคุณสมบัติ + ตั้งค่าให้หลายสินค้าได้จากหน้านี้ (isNew = ไม่มี :id)
 
 const route = useRoute()
 const router = useRouter()
@@ -27,10 +22,10 @@ const loading = ref(true)
 const saving = ref(false)
 const allProducts = ref<ProductOption[]>([])
 const productSearch = ref('')
-// product_id -> ค่าที่กรอก — มี key แปลว่า "ติ๊กสินค้านี้ไว้" (แม้ค่าจะว่างอยู่
-// ระหว่างพิมพ์ก็ตาม), ไม่มี key แปลว่ายังไม่ได้ติ๊ก
+// product_id → ค่าที่กรอก (มี key = ติ๊กสินค้านี้ไว้)
 const productValues = ref<Record<string, string>>({})
 
+// โหลดคุณสมบัติ + ค่าของแต่ละสินค้า + รายชื่อสินค้า
 async function load() {
   loading.value = true
   try {
@@ -59,13 +54,10 @@ const filteredProducts = computed(() => {
   return allProducts.value.filter((p) => p.product_name.toLowerCase().includes(term))
 })
 
-// ที่พักค่าตอนติ๊กออก — สถานะ "ติ๊กไว้ไหม" กับ "ค่าที่กรอก" อยู่ใน object
-// เดียวกัน (มี key = ติ๊ก) การติ๊กออกจึงต้องลบ key ทิ้ง ซึ่งเดิมทำให้ค่าที่
-// พิมพ์ไว้หายไปด้วย พอติ๊กกลับก็ได้ช่องว่างเปล่า ต้องพิมพ์ใหม่ทุกครั้ง —
-// เก็บค่าไว้ตรงนี้ก่อนลบ แล้วเติมคืนตอนติ๊กกลับ (อยู่แค่ในหน้านี้ รีเฟรช
-// แล้วหาย ซึ่งถูกแล้วเพราะโหลดใหม่จะได้ค่าจริงจาก DB มาแทนอยู่ดี)
+// จำค่าที่พิมพ์ไว้ตอนติ๊กออก ติ๊กกลับแล้วเติมคืน
 const stashedValues: Record<string, string> = {}
 
+// ติ๊ก/ถอนติ๊กสินค้า
 function toggleProduct(id: string) {
   const next = { ...productValues.value }
   if (id in next) {
@@ -78,6 +70,7 @@ function toggleProduct(id: string) {
 }
 const selectedCount = computed(() => Object.keys(productValues.value).length)
 
+// บันทึก (สร้างหรือแก้) พร้อมค่าของสินค้าที่ติ๊ก
 async function handleSubmit() {
   if (!form.attribute_name.trim()) {
     toast.error('กรุณากรอกชื่อคุณสมบัติ')
@@ -114,7 +107,6 @@ async function handleSubmit() {
       <ChevronRight aria-hidden="true" class="w-3.5 h-3.5" />
       <span>ฟอร์มข้อมูล</span>
     </nav>
-    <!--ฟอร์มคุณสมบัติสินค้า-->
     <form @submit.prevent="handleSubmit">
       <h1 class="text-xl font-bold text-gray-800">{{ isNew() ? 'เพิ่มคุณสมบัติสินค้า' : 'แก้ไขคุณสมบัติสินค้า' }}</h1>
       <div class="bg-white border rounded-xl p-6 mt-6 space-y-5 max-w-7xl">

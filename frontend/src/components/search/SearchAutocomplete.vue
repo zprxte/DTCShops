@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// ช่องค้นหาใน header + รายการแนะนำขณะพิมพ์ (หน่วง 300ms, ใช้คีย์บอร์ดได้)
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from 'lucide-vue-next'
@@ -13,14 +14,12 @@ const props = defineProps<{
   autoFocus?: boolean
   className?: string
 }>()
-//Emit
 const emit = defineEmits<{ navigate: [] }>()
 
 const { langs } = useLanguage()
 const router = useRouter()
 const listboxId = `autocomplete-${Math.random().toString(36).slice(2, 9)}`
 
-// คำแนะนำแต่ละอันคือสินค้าเจาะจง ไม่ใช่แค่คำค้น จึงเก็บ slug/รหัสไว้พาไปหน้าสินค้าได้เลย
 type Suggestion = { product_id: string; product_name: string; slug?: string | null }
 
 const searchword = ref('')
@@ -32,10 +31,10 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-// Guards against an older, slower request resolving after a newer one and
-// clobbering its (more relevant) results — "last request wins", not "last response wins".
+// คำขอล่าสุดชนะ — ผลของคำขอเก่าที่มาช้าห้ามทับ
 let requestId = 0
 
+// พิมพ์แล้วดึงคำแนะนำ (หน่วง 300ms)
 watch(searchword, (query) => {
   const trimmed = query.trim()
   const thisRequestId = ++requestId
@@ -59,6 +58,7 @@ watch(searchword, (query) => {
   }, DEBOUNCE_MS)
 })
 
+// คลิกนอกกล่องแล้วปิด
 function handlePointerDown(e: MouseEvent) {
   if (containerRef.value && !containerRef.value.contains(e.target as Node)) {
     open.value = false
@@ -67,23 +67,21 @@ function handlePointerDown(e: MouseEvent) {
 onMounted(() => document.addEventListener('mousedown', handlePointerDown))
 onBeforeUnmount(() => document.removeEventListener('mousedown', handlePointerDown))
 
+// ปิดรายการแล้วเอาโฟกัสออกจากช่อง
 function closeAndLeave() {
   open.value = false
-  // Leave the search box right away — picking a suggestion or hitting
-  // Enter means "go look at the product/results", not "keep typing here".
   inputRef.value?.blur()
   emit('navigate')
 }
 
-// กดคำแนะนำ = เลือกสินค้าตัวนั้นแล้ว จึงเข้าหน้าสินค้าเลย ไม่ต้องผ่านหน้าผลค้นหา
-// (ของเดิมยิงชื่อสินค้าเต็มไปค้นหา ซึ่งได้ผลลัพธ์อยู่ แต่ปนสินค้าตัวอื่นในหมวดเดียวกันมาด้วย)
+// กดคำแนะนำ = เข้าหน้าสินค้านั้นเลย
 function goToProduct(suggestion: Suggestion) {
-  searchword.value = suggestion.product_name // reflect the picked suggestion in the box
+  searchword.value = suggestion.product_name
   closeAndLeave()
   router.push(`/product/${productSlug(suggestion)}`)
 }
 
-// พิมพ์เองแล้วกด Enter (ไม่ได้เลือกคำแนะนำ) = ค้นหาตามคำที่พิมพ์ตามปกติ
+// Enter โดยไม่ได้เลือกคำแนะนำ = ไปหน้าผลค้นหา
 function goToSearch(term: string) {
   const trimmed = term.trim()
   searchword.value = trimmed
@@ -91,6 +89,7 @@ function goToSearch(term: string) {
   router.push(trimmed ? `/products?searchword=${encodeURIComponent(trimmed)}` : '/products')
 }
 
+// Enter: มีคำแนะนำที่เลือกไว้ไปหน้าสินค้า ไม่งั้นไปหน้าผลค้นหา
 function handleSubmit() {
   if (!searchword.value.trim()) {
     goToSearch('')
@@ -101,6 +100,7 @@ function handleSubmit() {
   else goToSearch(searchword.value)
 }
 
+// ลูกศรขึ้น/ลง/Esc เลือกคำแนะนำ
 function handleKeyDown(e: KeyboardEvent) {
   if (!showDropdown.value) return
   if (e.key === 'ArrowDown') {

@@ -5,11 +5,7 @@ import '../language/app_language.dart';
 import '../models/filter_option.dart';
 import 'sheet_scaffold.dart';
 
-// แผ่นตัวกรองที่เด้งขึ้นจากข้างล่าง
-// คืนค่าที่เลือกเมื่อกด "ดูผลลัพธ์" · คืน null ถ้าผู้ใช้ปิดทิ้ง
-//
-// เลือกเสร็จค่อยยิง API ทีเดียว ไม่ยิงทุกครั้งที่ติ๊ก
-// (ติ๊กทีละอันแล้วโหลดใหม่ รายการจะกระพริบและเปลืองเน็ต)
+// แผ่นตัวกรองหน้าสินค้า — คืนค่าเมื่อกด "ดูผลลัพธ์" (ยิง API ทีเดียว) · ปิดทิ้ง = null
 Future<ProductFilters?> showFilterSheet(
   BuildContext context, {
   required FilterOptions options,
@@ -74,7 +70,7 @@ class _FilterSheetState extends State<_FilterSheet> {
           spacing: 8,
           runSpacing: 8,
           children: sortLabels.entries
-              // ไม่มีคำค้น ก็ไม่มีอะไรให้วัดว่า "ตรงที่สุด"
+              // ไม่มีคำค้น = ไม่มีตัวเลือก "ตรงที่สุด"
               .where((e) => widget.isSearch || e.key != 'relevance')
               .map(
                 (e) => ChoiceChip(
@@ -109,8 +105,7 @@ class _FilterSheetState extends State<_FilterSheet> {
     ),
   );
 
-  // จำนวนสินค้าต่อท้ายตัวเลือก ทำให้ผู้ใช้รู้ล่วงหน้าว่าติ๊กแล้วเจออะไรบ้าง
-  // ไม่ต้องลองผิดลองถูก — backend ส่งตัวเลขนี้มาให้อยู่แล้ว
+  // ชิปตัวเลือกพร้อมจำนวนสินค้า
   Widget _chips(List<FilterOption> options, Set<String> selected) => Wrap(
     spacing: 8,
     runSpacing: 8,

@@ -12,13 +12,14 @@ import '../utils/highlight.dart';
 import '../utils/format.dart';
 import '../utils/compare_actions.dart';
 
+// การ์ดสินค้า: รูป ชื่อ (ไฮไลต์คำค้น) ราคา + ปุ่มเปรียบเทียบ 2 สถานะ
 class ProductCard extends StatefulWidget {
   const ProductCard({super.key, required this.product, this.onTap, this.query});
 
   final Product product;
   final VoidCallback? onTap;
 
-  // คำค้นปัจจุบัน — ส่วนที่ตรงกันในชื่อสินค้าจะถูกไฮไลต์ให้ (เหมือนหน้าเว็บ)
+  // คำค้นปัจจุบัน (ไฮไลต์ในชื่อ)
   final String? query;
 
   @override
@@ -26,16 +27,10 @@ class ProductCard extends StatefulWidget {
 }
 
 class _ProductCardState extends State<ProductCard> {
-  // กำลังโหลดโมเดลของสินค้าตัวนี้อยู่ — กันกดรัวจนยิง API ซ้อนกัน
+  // กำลังโหลดโมเดลอยู่ กันกดรัว
   bool _loadingModels = false;
 
-  // เหมือนหน้าเว็บ (ProductCard.vue):
-  // - สินค้าไม่มีโมเดล → เพิ่ม/เอาออกได้เลย
-  // - มีหลายโมเดล → เปิดป็อปอัปให้เลือกก่อน เพราะแต่ละโมเดลราคา/สเปคคนละชุด
-  // - มีโมเดลเดียว → เพิ่มโมเดลนั้นให้เลย ไม่ต้องถาม
-  //
-  // ขั้นตอนหาโมเดลและข้อความแจ้งผลอยู่ใน utils/compare_actions.dart
-  // ใช้ร่วมกับป็อปอัปเลือกสินค้าและหน้ารายละเอียดสินค้า
+  // ปุ่มเปรียบเทียบ: ไม่มี/1 โมเดล = เพิ่ม/เอาออกเลย · หลายโมเดล = เปิดป็อปอัปเลือก
   Future<void> _toggleCompare(bool inCompare) async {
     final product = widget.product;
 
@@ -58,7 +53,6 @@ class _ProductCardState extends State<ProductCard> {
         await showCompareModelDialog(context, product: resolved.product!);
         return;
       }
-      // เหลือโมเดลเดียว (หรือไม่มีเลย) ปุ่มบนการ์ดจึงสลับเพิ่ม/เอาออกได้ทันที
       if (inCompare) {
         removeCompareProduct(product.productId);
       } else {
@@ -73,7 +67,6 @@ class _ProductCardState extends State<ProductCard> {
   Widget build(BuildContext context) {
     final nameHeight = MediaQuery.textScalerOf(context).scale(13.5) * 1.35 * 2;
     return DecoratedBox(
-      // เงาอ่อนๆ ให้การ์ดลอยจากพื้นหลัง แทนการใช้เส้นขอบหนาๆ
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
@@ -92,8 +85,7 @@ class _ProductCardState extends State<ProductCard> {
           side: const BorderSide(color: AppColors.border),
         ),
         child: InkWell(
-          // ไม่ได้ส่ง onTap มา = เข้าหน้ารายละเอียดสินค้าเป็นค่าเริ่มต้น
-          // ทุกที่ที่ใช้การ์ดจึงกดเข้าดูสินค้าได้เหมือนกันหมด
+          // ไม่ส่ง onTap = เข้าหน้ารายละเอียดเป็นค่าเริ่มต้น
           onTap:
               widget.onTap ??
               () => Navigator.of(context).push(
@@ -107,8 +99,7 @@ class _ProductCardState extends State<ProductCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // รูปสินค้า: จัตุรัส พื้นขาว มุมมนของตัวเอง — พื้นขาวเหมือน ProductCard.vue
-                // เพราะรูปสินค้าส่วนใหญ่มีพื้นขาวติดมาในไฟล์ วางบนพื้นเทาจะเห็นกรอบซ้อนสองสี
+                // รูปพื้นขาว (รูปสินค้าส่วนใหญ่มีพื้นขาวในไฟล์)
                 Expanded(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
@@ -160,9 +151,6 @@ class _ProductCardState extends State<ProductCard> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // ปุ่มเปรียบเทียบ: พื้นฟ้าอ่อน ตัวอักษรฟ้าเข้ม (contrast ผ่าน) สูง 44 นิ้วกดง่าย
-                // ปุ่ม 2 สถานะเหมือนหน้าเว็บ · ValueListenableBuilder ทำให้ปุ่ม
-                // วาดใหม่เองทุกครั้งที่ตะกร้าเปลี่ยน ไม่ว่าจะเปลี่ยนจากหน้าไหน
                 ValueListenableBuilder<List<CompareItem>>(
                   valueListenable: CompareStore.instance.items,
                   builder: (context, items, _) {

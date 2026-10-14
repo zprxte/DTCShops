@@ -6,11 +6,7 @@ import { adminAPI, resolveImageUrl } from '../../services/api'
 import { toast } from '../../stores/toast'
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue'
 
-// เพิ่ม/แก้ไขประเภทสินค้า — หน้าฟอร์มเดี่ยว (ไม่ใช่ popup อีกต่อไป) ตาม
-// แพทเทิร์นเดียวกับ AdminBannerFormPage.vue — component เดียวรองรับทั้ง
-// สร้าง/แก้ไข (isNew = !route.params.id) — มีช่องเลือกสินค้าที่จะย้ายเข้ามา
-// อยู่ในหมวดนี้ (ไม่บังคับ) เหมือนตอนเป็น popup, ตอนแก้ไขจะ pre-check สินค้า
-// ที่อยู่ในหมวดนี้อยู่แล้วให้ (จาก GET /admin/categories/:id's product_ids)
+// ฟอร์มเพิ่ม/แก้ไขหมวดหมู่ + เลือกสินค้าที่อยู่ในหมวด (isNew = ไม่มี :id)
 
 const route = useRoute()
 const router = useRouter()
@@ -27,11 +23,12 @@ const saving = ref(false)
 const allProducts = ref<ProductOption[]>([])
 const productSearch = ref('')
 const selectedProductIds = ref<Set<string>>(new Set())
-// รูปหมวดหมู่ (tbl_item_type.thumbnail) — แสดงในการ์ดหมวดหมู่หน้าแรกของเว็บและแอป
+// รูปหมวดหมู่ (แสดงในการ์ดหมวดหมู่หน้าแรกของเว็บและแอป)
 const thumbnail = ref<string | null>(null)
 const uploadingImage = ref(false)
 const pendingImageDelete = ref(false)
 
+// โหลดหมวด + สินค้าที่อยู่ในหมวด + รายชื่อสินค้าทั้งหมด
 async function load() {
   loading.value = true
   try {
@@ -53,6 +50,7 @@ async function load() {
 }
 load()
 
+// อัปโหลดรูปหมวดหมู่
 async function handleImageFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   ;(e.target as HTMLInputElement).value = ''
@@ -86,6 +84,7 @@ function toggleSelectedProduct(id: string) {
   selectedProductIds.value = next
 }
 
+// บันทึกหมวด (สินค้าที่ติ๊กถูกย้ายเข้าหมวดนี้)
 async function handleSubmit() {
   if (!form.category_name.trim()) {
     toast.error('กรุณากรอกชื่อประเภทสินค้า')

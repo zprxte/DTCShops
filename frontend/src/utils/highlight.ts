@@ -3,12 +3,12 @@ export interface HighlightSegment {
   match: boolean
 }
 
+// ตัดข้อความเป็นช่วงที่ตรง/ไม่ตรงคำค้น ไว้ไฮไลต์
 export function highlightSegments(text: string, query: string): HighlightSegment[] {
   const terms = [...new Set(query.trim().split(/\s+/).filter(Boolean))]
   if (!terms.length) return [{ text, match: false }]
 
-  // Match each search term wherever it appears, preferring longer terms at
-  // the same position. Escape input so model names such as "C++" stay literal.
+  // คำยาวมาก่อนที่ตำแหน่งเดียวกัน · escape ให้ชื่ออย่าง "C++" เป็นตัวอักษรธรรมดา
   const pattern = terms
     .sort((a, b) => b.length - a.length)
     .map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))

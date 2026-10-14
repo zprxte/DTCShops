@@ -3,11 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../language/app_language.dart';
 
-// เปิดลิงก์ภายนอก (ร้านค้า / โทรออก) พร้อมบอกผู้ใช้เมื่อเปิดไม่ได้
-//
-// ใช้ [LaunchMode.externalApplication] เพื่อให้เด้งไปแอปร้านค้าที่ติดตั้งไว้
-// (Shopee/Lazada/TikTok/LINE) ถ้าไม่มีแอปค่อยตกไปเป็นเบราว์เซอร์
-// — โหมดในแอปจะติดหน้าล็อกอินของร้านค้าและกดกลับยาก
+// เปิดลิงก์ร้านค้า/โทรออก ในแอปภายนอก (Shopee/LINE ฯลฯ ถ้ามี) — เปิดไม่ได้แจ้งผู้ใช้
 Future<void> openExternalLink(
   BuildContext context,
   String url, {
@@ -16,7 +12,7 @@ Future<void> openExternalLink(
   final messenger = ScaffoldMessenger.of(context);
   final uri = Uri.tryParse(url.trim());
 
-  // ลิงก์ในฐานข้อมูลบางแถวกรอกไว้ไม่ครบ (ไม่มี https://) เปิดไม่ได้จริง
+  // ลิงก์ใน DB บางแถวไม่มี https://
   if (uri == null ||
       !uri.hasScheme ||
       uri.host.isEmpty && !uri.isScheme('tel')) {

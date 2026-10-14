@@ -15,11 +15,11 @@ import '../widgets/async_state.dart';
 import '../widgets/pill_style.dart';
 import '../widgets/remote_image.dart';
 
-//หนัาเปรียบเทียบสินค้า
+// แท็บเปรียบเทียบ: ตารางเทียบสเปค 2 ช่อง (สินค้า + โมเดล) + ตัวกรอง/เรียง + หัวค้าง
 class CompareScreen extends StatefulWidget {
   const CompareScreen({super.key, this.onBrowse});
 
-  //กดช่องว่าง "เพิ่มสินค้า" แล้วไปหน้าสินค้าทั้งหมด
+  // กดช่องว่างตอนตะกร้าว่างแล้วไปแท็บสินค้า
   final VoidCallback? onBrowse;
 
   @override
@@ -30,12 +30,11 @@ class _CompareScreenState extends State<CompareScreen> {
   final CompareStore _store = CompareStore.instance;
 
   Future<List<CompareProduct>>? _future;
-  String _loadedIds = ''; // ชุดรหัสที่โหลดไปแล้ว กันยิง API ซ้ำโดยไม่จำเป็น
+  String _loadedIds = ''; // ชุดรหัสที่โหลดแล้ว กันยิง API ซ้ำ
 
-  //ตัวกรองของตาราง (คุณสมบัติที่ติ๊ก + การเรียง + สวิตช์ซ่อนแถว)
+  // ตัวกรองของตาราง (ติ๊กคุณสมบัติ + เรียง + สวิตช์ซ่อนแถว)
   CompareFilter _filter = const CompareFilter();
 
-  //ดึงค่าตัวกรองมาจาก store
   @override
   void initState() {
     super.initState();
@@ -43,20 +42,19 @@ class _CompareScreenState extends State<CompareScreen> {
     _reload();
   }
 
-  //ลบค่าสินค้าออกจาก store
   @override
   void dispose() {
     _store.items.removeListener(_reload);
     super.dispose();
   }
 
-  //โหลดสินค้า
+  // โหลดข้อมูลสินค้าในตะกร้า (ชุดเดิมไม่โหลดซ้ำ)
   void _reload() {
-    // สินค้าเดียวกันหลายโมเดลใช้ข้อมูลก้อนเดียว ยิง API ครั้งเดียวพอ
+    // สินค้าเดียวกันหลายโมเดลโหลดครั้งเดียว
     final ids = <String>{for (final item in _store.items.value) item.productId}
         .toList();
     final key = ids.join(',');
-    if (key == _loadedIds) return; // รายการเดิม ไม่ต้องโหลดใหม่
+    if (key == _loadedIds) return;
     setState(() {
       _loadedIds = key;
       _future = ids.isEmpty ? null : ApiService().fetchCompare(ids);
@@ -97,7 +95,7 @@ class _CompareScreenState extends State<CompareScreen> {
                   title: langs('compareLoadError'),
                   error: snapshot.error,
                   onRetry: () {
-                    _loadedIds = ''; // บังคับให้โหลดใหม่
+                    _loadedIds = '';
                     _reload();
                   },
                 );
@@ -108,14 +106,13 @@ class _CompareScreenState extends State<CompareScreen> {
                 return _EmptyState(onBrowse: widget.onBrowse);
               }
 
-              // หนึ่งคอลัมน์ = หนึ่งช่องในตะกร้า (สินค้า, โมเดล) ไม่ใช่หนึ่งสินค้า
-              // ข้อมูลสเปคหยิบจากสินค้าที่โหลดมา แล้วให้ค่าเฉพาะโมเดลเขียนทับ
+              // 1 คอลัมน์ = 1 ช่องในตะกร้า (สเปคจากสินค้า ทับด้วยค่าเฉพาะโมเดล)
               final columns = <_CompareColumn>[];
               for (final item in items) {
                 final product = products
                     .where((p) => p.productId == item.productId)
                     .firstOrNull;
-                if (product == null) continue; // สินค้าถูกปิดการขายไปแล้ว
+                if (product == null) continue; // สินค้าถูกปิดการขายแล้ว
                 columns.add(_CompareColumn(item: item, product: product));
               }
               if (columns.isEmpty) {
@@ -137,7 +134,7 @@ class _CompareScreenState extends State<CompareScreen> {
   }
 }
 
-//หนึ่งคอลัมน์ในตาราง = ช่องในตะกร้า + ข้อมูลสินค้าที่โหลดมาแล้ว
+// 1 คอลัมน์ = ช่องในตะกร้า + ข้อมูลสินค้าที่โหลดมา
 class _CompareColumn {
   _CompareColumn({required this.item, required this.product});
 
@@ -151,13 +148,13 @@ class _CompareColumn {
   String? get image => product.productImage ?? item.productImage;
   num get price => item.productPrice;
 
-  //สเปคของช่องนี้ = ค่าร่วมของสินค้า ทับด้วยค่าเฉพาะโมเดลที่เลือก
+  // สเปคของช่อง = ค่าร่วม ทับด้วยค่าเฉพาะโมเดล
   late final Map<String, String> attributes = product.attributesFor(
     item.modelId,
   );
 }
 
-//ค่าที่ถือว่า "ไม่มีคุณสมบัตินี้" ตอนนับคะแนนความตรงกับที่ผู้ใช้ติ๊ก
+// ค่าที่ถือว่า "ไม่มีคุณสมบัตินี้"
 const Set<String> _negativeFeatureValues = {
   '',
   '-',
@@ -170,16 +167,14 @@ const Set<String> _negativeFeatureValues = {
   '✗',
 };
 
+// คอลัมน์นี้มีคุณสมบัตินี้ไหม
 bool _hasFeature(_CompareColumn column, String name) {
   final raw = column.attributes[name];
   if (raw == null) return false;
   return !_negativeFeatureValues.contains(raw.trim().toLowerCase());
 }
 
-//อ่านตัวเลขตัวแรกของข้อความหนึ่งท่อน — กติกาเดียวกับ `parseNumber()` ของเว็บ
-//"2K" = 2000 และ "4K" = 4000 (ตัวเลขที่ตามด้วย K แปลว่าพัน) ต้องแปลงก่อนเสมอ
-//ไม่งั้น "2K@30fps" จะถูกอ่านเป็นเลข 2 แล้วแพ้ "1080P@30fps" ทั้งที่ชัดกว่า
-//ท้าย K ต้องไม่ใช่ตัวอักษร/ตัวเลขต่อ กันไปโดนรหัสรุ่นอย่าง "2K5" เข้า
+// เลขตัวแรกของข้อความ (กติกาเดียวกับเว็บ): "2K" = 2000 แต่ไม่โดนรหัสรุ่นอย่าง "2K5"
 double? _parseNumber(String raw) {
   final k = RegExp(r'(\d+(?:\.\d+)?)\s*[kK](?!\w)').firstMatch(raw);
   if (k != null) {
@@ -190,11 +185,7 @@ double? _parseNumber(String raw) {
   return match == null ? null : double.tryParse(match.group(0)!);
 }
 
-// อ่านตัวเลขของค่าที่เป็นรายการหลายค่า เช่น
-// "กล้องหน้า 2K, กล้องหลัง 1080P" → [2000, 1080]
-//
-// ตัดเป็นท่อนก่อนแล้วเอาตัวเลขตัวแรกของแต่ละท่อน (เหมือนเว็บ) ไม่ใช่กวาดทุกตัวเลข
-// ในข้อความ ไม่งั้นหน่วยที่พ่วงมาอย่าง "@30fps" จะถูกนับเป็นค่าของสเปคด้วย
+// ตัวเลขของค่าหลายรายการ: ตัดเป็นท่อนแล้วเอาเลขตัวแรกของแต่ละท่อน ("กล้องหน้า 2K, กล้องหลัง 1080P" → [2000, 1080])
 List<double> _parseAllNumbers(String? raw) {
   if (raw == null) return const [];
   final numbers = <double>[];
@@ -205,6 +196,7 @@ List<double> _parseAllNumbers(String? raw) {
   return numbers;
 }
 
+// ตาราง: นับความตรง เรียงคอลัมน์ ป้ายแนะนำ กรองแถว
 class _CompareTable extends StatelessWidget {
   const _CompareTable({
     required this.columns,
@@ -220,14 +212,11 @@ class _CompareTable extends StatelessWidget {
   final ValueChanged<String> onRemove;
   final VoidCallback? onBrowse;
 
-  // ยังไม่เต็มเพดาน = ต่อช่องว่างอีกหนึ่งช่องท้ายตาราง (เหมือนเว็บ)
-  // ต่อทีละช่องพอ ไม่ต่อจนเต็มเพดาน เพราะจอมือถือเห็นทีละ 2 คอลัมน์
-  // ช่องว่างหลายช่องรวดจะดันสินค้าจริงหลุดจอไปโดยไม่ได้ประโยชน์
+  // ยังไม่เต็ม = ต่อช่องว่าง 1 ช่องท้ายตาราง
   bool get _hasAddSlot => columns.length < CompareStore.maxItems;
   int get _slotCount => columns.length + (_hasAddSlot ? 1 : 0);
 
-  // รวมหัวข้อสเปคของทุกคอลัมน์ โดยคงลำดับที่เจอครั้งแรกไว้
-  // (เรียงตามที่แอดมินตั้งไว้ ไม่ใช่เรียงตามตัวอักษร)
+  // หัวข้อสเปคของทุกคอลัมน์ คงลำดับที่เจอครั้งแรก
   List<String> get _attributeNames {
     final names = <String>[];
     for (final column in columns) {
@@ -238,6 +227,7 @@ class _CompareTable extends StatelessWidget {
     return names;
   }
 
+  // ทุกคอลัมน์ค่าเท่ากันไหม
   bool _isSame(String attribute) {
     final values = columns
         .map((c) => c.attributes[attribute] ?? 'ไม่มี')
@@ -245,8 +235,7 @@ class _CompareTable extends StatelessWidget {
     return values.length == 1;
   }
 
-  // หัวข้อที่เรียงลำดับได้จริง = อ่านเป็นตัวเลขได้อย่างน้อย 2 คอลัมน์
-  // (มีคอลัมน์เดียวที่เป็นตัวเลข ก็ไม่มีอะไรให้เทียบกัน)
+  // หัวข้อที่เรียงได้ = เป็นตัวเลขอย่างน้อย 2 คอลัมน์
   Set<String> _computableNames(List<String> names) {
     return names.where((name) {
       final numeric = columns
@@ -258,9 +247,7 @@ class _CompareTable extends StatelessWidget {
     }).toSet();
   }
 
-  // เทียบคอลัมน์สองตัวตามหัวข้อที่เลือกเรียง — ตัวที่ไม่มีค่าตกไปท้ายเสมอ
-  // ตัวเลขตัวมากสุดเป็นตัวตัดสินหลัก เท่ากันแล้วดูว่ามีค่าหลายตัวกว่ากัน
-  // (เช่นมีกล้อง 2 ตัวย่อมดีกว่ากล้องตัวเดียวที่ความละเอียดเท่ากัน)
+  // เทียบคอลัมน์ตามหัวข้อที่เรียง: ไม่มีค่าไปท้าย · เลขมากสุดตัดสิน · เท่ากันดูจำนวนค่า
   int _compareBySortField(
     String field,
     bool ascending,
@@ -269,7 +256,7 @@ class _CompareTable extends StatelessWidget {
   ) {
     final sign = ascending ? 1 : -1;
     if (field == compareSortPrice) {
-      // ราคา 0 = "ติดต่อสอบถาม" ถือว่าไม่มีราคา ตกไปท้ายเสมอทั้งสองทิศทาง
+      // ราคา 0 = ติดต่อสอบถาม ไปท้ายทั้งสองทิศ
       final priceA = a.price == 0 ? null : a.price;
       final priceB = b.price == 0 ? null : b.price;
       if (priceA == null && priceB == null) return 0;
@@ -294,8 +281,7 @@ class _CompareTable extends StatelessWidget {
     final computable = _computableNames(names);
     final sameNames = names.where(_isSame).toSet();
 
-    // สินค้าที่มีคุณสมบัติที่ติ๊กไว้อาจถูกเอาออกจากตารางไปแล้ว — หัวข้อที่ไม่มี
-    // อยู่จริงต้องไม่ถูกนับ ไม่งั้น "ตรงกับที่เลือก 1/3" จะอ้างถึงหัวข้อที่มองไม่เห็น
+    // นับเฉพาะหัวข้อที่ยังมีอยู่ในตาราง
     final features = filter.features.where(names.contains).toSet();
     final sortField =
         filter.sortField == compareSortPrice ||
@@ -304,7 +290,6 @@ class _CompareTable extends StatelessWidget {
         : compareSortNone;
     final effective = filter.copyWith(features: features, sortField: sortField);
 
-    // นับว่าแต่ละคอลัมน์ตรงกับคุณสมบัติที่ติ๊กไว้กี่ข้อ
     final matchByKey = <String, int>{};
     if (features.isNotEmpty) {
       for (final column in columns) {
@@ -314,8 +299,7 @@ class _CompareTable extends StatelessWidget {
       }
     }
 
-    // เรียงคอลัมน์: ตรงกับที่ติ๊กมากกว่ามาก่อน แล้วค่อยเรียงตามหัวข้อที่เลือก
-    // เท่ากันหมดให้คงลำดับเดิมในตะกร้า (stable sort ด้วยดัชนีเดิม)
+    // เรียง: ตรงคุณสมบัติที่ติ๊กมากก่อน แล้วตามหัวข้อที่เรียง · เท่ากันคงลำดับเดิม
     final ordered = [
       for (var i = 0; i < columns.length; i++) (index: i, column: columns[i]),
     ];
@@ -338,8 +322,7 @@ class _CompareTable extends StatelessWidget {
     });
     final sorted = [for (final entry in ordered) entry.column];
 
-    // ติดป้าย "แนะนำ" เฉพาะตอนที่คอลัมน์แรกชนะคอลัมน์ถัดไปจริงๆ —
-    // ตรงเท่ากันหมดและไม่มีสเปคตัวเลขให้ตัดสิน ก็ไม่มีตัวไหนดีกว่า
+    // ป้าย "แนะนำ" เฉพาะเมื่อคอลัมน์แรกชนะคอลัมน์ถัดไปจริง
     var highlightIndex = -1;
     if (sorted.length >= 2) {
       final first = sorted[0];
@@ -360,7 +343,6 @@ class _CompareTable extends StatelessWidget {
       }
     }
 
-    // แถวที่จะแสดงจริงหลังกรอง
     var rows = names;
     if (effective.onlySelected && features.isNotEmpty) {
       rows = rows.where(features.contains).toList();
@@ -369,6 +351,7 @@ class _CompareTable extends StatelessWidget {
       rows = rows.where((name) => !sameNames.contains(name)).toList();
     }
 
+    // เปิดแผ่นตัวกรองแล้วเก็บค่าใหม่ลง store
     Future<void> openFilter() async {
       final next = await showCompareFilterSheet(
         context,
@@ -382,14 +365,13 @@ class _CompareTable extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // มือถือเห็นทีละ 2 คอลัมน์ ถ้าจอกว้างพอก็กางให้ครบทุกคอลัมน์
+        // จอกว้างพอให้กางครบทุกคอลัมน์
         final fitAll = constraints.maxWidth / _slotCount >= 180;
         final columnWidth = fitAll
             ? constraints.maxWidth / _slotCount
             : constraints.maxWidth / 2;
         final tableWidth = columnWidth * _slotCount;
 
-        // หัวตาราง: การ์ดสินค้าแต่ละคอลัมน์
         final headerRow = Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -412,7 +394,6 @@ class _CompareTable extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: AspectRatio(
-                    // สูงเท่ารูปในหัวคอลัมน์ข้างๆ พอดี
                     aspectRatio: 1,
                     child: _AddSlot(
                       onTap: () => showProductPickerSheet(
@@ -439,7 +420,7 @@ class _CompareTable extends StatelessWidget {
                 ),
               ),
             ),
-            // ช่องว่าง "เพิ่มสินค้า" ไม่มีอะไรให้ค้าง แต่ต้องกันที่ไว้ให้ตรงคอลัมน์
+            // ช่องว่างไม่มีอะไรให้ค้าง แต่ต้องกันที่ให้ตรงคอลัมน์
             if (_hasAddSlot) SizedBox(width: columnWidth),
           ],
         );
@@ -494,7 +475,7 @@ class _CompareTable extends StatelessWidget {
   }
 }
 
-// ตารางที่ "หัวค้าง" ตอนเลื่อนดูสเปคยาวๆ
+// ตารางที่หัวค้างตอนเลื่อนดูสเปค
 class _StickyTable extends StatefulWidget {
   const _StickyTable({
     required this.columnWidth,
@@ -507,10 +488,10 @@ class _StickyTable extends StatefulWidget {
   final double columnWidth;
   final double tableWidth;
 
-  // หัวตารางจริง (การ์ดสินค้าเต็มใบ) อยู่ในสายการเลื่อนตามปกติ
+  // หัวตารางจริง (การ์ดเต็มใบ)
   final Widget header;
 
-  // หัวจำลองแบบย่อ โผล่มาทับเมื่อหัวจริงเลื่อนพ้นจอไปแล้ว
+  // หัวจำลองแบบย่อ โผล่เมื่อหัวจริงพ้นจอ
   final Widget clone;
 
   final List<Widget> body;
@@ -538,7 +519,7 @@ class _StickyTableState extends State<_StickyTable> {
   @override
   void didUpdateWidget(_StickyTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // เพิ่ม/เปลี่ยนสินค้าแล้วความสูงของหัวตารางเปลี่ยนได้ ต้องวัดใหม่
+    // เพิ่ม/เปลี่ยนสินค้าแล้วความสูงหัวเปลี่ยน ต้องวัดใหม่
     _scheduleMeasure();
   }
 
@@ -550,6 +531,7 @@ class _StickyTableState extends State<_StickyTable> {
     super.dispose();
   }
 
+  // วัดความสูงหัวจริงหลังวาดเสร็จ
   void _scheduleMeasure() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -563,18 +545,17 @@ class _StickyTableState extends State<_StickyTable> {
     });
   }
 
-  // หัวจริงเลื่อนพ้นจอเมื่อไหร่ ก็สลับมาโชว์หัวจำลองแทน
-  // เทียบค่าก่อน setState เสมอ ไม่งั้นจะวาดใหม่ทุกพิกเซลที่นิ้วลาก
+  // หัวจริงพ้นจอ = โชว์หัวจำลอง (เทียบค่าก่อน setState ไม่ให้วาดทุกพิกเซล)
   void _updateCloneVisibility() {
     if (_headerHeight <= 0 || !_vertical.hasClients) return;
     final show = _vertical.offset >= _headerHeight;
     if (show == _showClone) return;
     setState(() => _showClone = show);
-    // หัวจำลองเพิ่งถูกสร้าง ตัวเลื่อนแนวนอนของมันยังอยู่ที่ 0
-    // ต้องดันไปให้ตรงกับตารางจริงก่อนผู้ใช้ทันเห็นว่าคนละคอลัมน์กัน
+    // หัวจำลองเพิ่งสร้าง — ดันตัวเลื่อนแนวนอนให้ตรงตารางจริง
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncClone());
   }
 
+  // ให้หัวจำลองเลื่อนแนวนอนตามตารางจริง
   void _syncClone() {
     if (!_cloneH.hasClients || !_bodyH.hasClients) return;
     final target = _bodyH.offset.clamp(0.0, _cloneH.position.maxScrollExtent);
@@ -586,8 +567,7 @@ class _StickyTableState extends State<_StickyTable> {
     _scheduleMeasure();
 
     return Stack(
-      // ตัวเลื่อนต้องสูงเต็มพื้นที่เสมอ ไม่งั้นตอนสเปคสั้นกว่าจอ พื้นที่ว่างข้างล่าง
-      // จะลากไม่ติด (Stack แบบ loose ย่อตัวลงเท่าลูกที่สูงสุด)
+      // ตัวเลื่อนต้องสูงเต็มพื้นที่ ไม่งั้นพื้นที่ว่างใต้สเปคสั้นๆ ลากไม่ติด
       fit: StackFit.expand,
       children: [
         SingleChildScrollView(
@@ -595,7 +575,6 @@ class _StickyTableState extends State<_StickyTable> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             controller: _bodyH,
-            // ปัดแล้วหยุดตรงขอบคอลัมน์เสมอ ไม่ค้างครึ่งคอลัมน์
             physics: SnapScrollPhysics(itemExtent: widget.columnWidth),
             child: SizedBox(
               width: widget.tableWidth,
@@ -620,8 +599,7 @@ class _StickyTableState extends State<_StickyTable> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 controller: _cloneH,
-                // ปัดที่หัวจำลองไม่ได้ ให้ปัดที่ตัวตารางแล้วหัวเลื่อนตามเอง
-                // (ปัดได้สองที่ = สองตัวเลื่อนแย่งกันสั่ง jumpTo ใส่กันไปมา)
+                // ปัดที่หัวจำลองไม่ได้ (สองตัวเลื่อนจะแย่งกัน jumpTo)
                 physics: const NeverScrollableScrollPhysics(),
                 child: SizedBox(width: widget.tableWidth, child: widget.clone),
               ),
@@ -632,8 +610,7 @@ class _StickyTableState extends State<_StickyTable> {
   }
 }
 
-// หนึ่งคอลัมน์ของหัวค้าง — เลียนหัวตารางจำลองของเว็บ:
-// บรรทัดบน รูปเล็ก + ชื่อสินค้า + ปุ่มเอาออก · บรรทัดล่าง ปุ่มเปลี่ยนสินค้า | เลือกโมเดล
+// 1 คอลัมน์ของหัวค้าง: รูปเล็ก + ชื่อ + ✕ / ปุ่มเปลี่ยนสินค้า | เลือกโมเดล
 class _CloneHeaderCell extends StatelessWidget {
   const _CloneHeaderCell({
     required this.column,
@@ -664,8 +641,7 @@ class _CloneHeaderCell extends StatelessWidget {
                 child: RemoteImage(path: column.image, iconSize: 16),
               ),
               const SizedBox(width: 6),
-              // ชื่อบรรทัดเดียวแบบเว็บ — หัวค้างต้องเตี้ยที่สุดเท่าที่ยังอ่านออก
-              // ไม่งั้นมันไปบังแถวสเปคที่กำลังอ่านอยู่เสียเอง
+              // ชื่อบรรทัดเดียว หัวค้างต้องเตี้ยไม่บังสเปค
               Expanded(
                 child: Text(
                   column.name,
@@ -690,7 +666,6 @@ class _CloneHeaderCell extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 5),
-          // ปุ่มชุดเดียวกับหัวจริง ใช้ได้เลยโดยไม่ต้องเลื่อนกลับขึ้นไปบนสุด
           Row(
             children: [
               Expanded(
@@ -716,12 +691,7 @@ class _CloneHeaderCell extends StatelessWidget {
   }
 }
 
-// แถบตัวกรองเหนือตาราง: ปุ่มเปิดแผ่นตัวกรอง (มีตัวเลขบอกจำนวนที่ตั้งไว้)
-// กับปุ่มล้างการกรอง — แค่สองปุ่ม ไม่มีชิปรายหัวข้อ
-//
-// เดิมมีชิปของคุณสมบัติที่ติ๊กไว้เรียงอยู่ใต้ปุ่ม แต่เอาออกตามคำขอผู้ใช้
-// (23 ก.ย. 2026): เว็บไม่มีชิปแบบนี้ สถานะที่ติ๊กไว้ดูได้ในแผ่นตัวกรองอยู่แล้ว
-// และชิปกินพื้นที่แนวตั้งเหนือตารางซึ่งจอมือถือมีน้อย
+// แถบเหนือตาราง: ปุ่มตัวกรอง (มีตัวเลข) + ล้างการกรอง
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.filter,
@@ -788,6 +758,7 @@ class _FilterBar extends StatelessWidget {
   }
 }
 
+// หัวคอลัมน์การ์ด: รูป ชื่อ โมเดล ราคา ปุ่มเปลี่ยนสินค้า | เลือกโมเดล
 class _ColumnHeader extends StatelessWidget {
   const _ColumnHeader({
     required this.column,
@@ -801,10 +772,10 @@ class _ColumnHeader extends StatelessWidget {
   final _CompareColumn column;
   final VoidCallback onRemove;
 
-  // คอลัมน์นี้ชนะตามตัวกรองที่ตั้งไว้ — ติดป้าย "แนะนำ" ทับมุมรูป
+  // คอลัมน์ที่ชนะ — ติดป้าย "แนะนำ"
   final bool recommended;
 
-  // ตรงกับคุณสมบัติที่ติ๊กไว้กี่ข้อ (null = ยังไม่ได้ติ๊กอะไร ไม่ต้องแสดง)
+  // จำนวนคุณสมบัติที่ตรง (null = ยังไม่ติ๊ก)
   final int? matchCount;
   final int featureCount;
 
@@ -830,7 +801,6 @@ class _ColumnHeader extends StatelessWidget {
                   child: RemoteImage(path: column.image),
                 ),
               ),
-              // ป้าย "แนะนำ" ทับมุมล่างซ้ายของรูป — มุมบนขวาเป็นปุ่มเอาออกแล้ว
               if (recommended)
                 Positioned(
                   left: 4,
@@ -854,7 +824,6 @@ class _ColumnHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-              // ปุ่มเอาออก ทับมุมรูปเหมือนหน้าเว็บ
               Positioned(
                 top: 0,
                 right: 0,
@@ -887,8 +856,7 @@ class _ColumnHeader extends StatelessWidget {
               color: AppColors.navy900,
             ),
           ),
-          // ชื่อโมเดลต้องอยู่ใต้ชื่อสินค้าเสมอ ไม่งั้นสินค้าตัวเดียวกันสองโมเดล
-          // จะเป็นสองคอลัมน์ที่หน้าตาเหมือนกันเป๊ะ แยกไม่ออกว่าอันไหนรุ่นอะไร
+          // ชื่อโมเดลใต้ชื่อสินค้า ไม่งั้นสองโมเดลของสินค้าเดียวกันแยกไม่ออก
           if (column.modelName != null) ...[
             const SizedBox(height: 2),
             Text(
@@ -920,8 +888,6 @@ class _ColumnHeader extends StatelessWidget {
               color: AppColors.brand700,
             ),
           ),
-          // ตรงกับที่เลือกกี่ข้อ — ต้องบอกเป็นตัวเลข ไม่งั้นผู้ใช้เห็นแค่ลำดับ
-          // ที่สลับไปมาโดยไม่รู้ว่าระบบตัดสินจากอะไร
           if (matchCount != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -930,9 +896,7 @@ class _ColumnHeader extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          // สองปุ่มแถวเดียวกันคนละครึ่งเหมือนเว็บ: เปลี่ยนทั้งสินค้า | เปลี่ยนแค่โมเดล
-          // ทั้งคู่ "แทนที่ช่องเดิมในตำแหน่งเดิม" ไม่ใช่เอาออกแล้วเพิ่มใหม่
-          // (ซึ่งจะทำให้คอลัมน์สลับที่ทั้งที่ผู้ใช้แค่เปลี่ยนของในช่องเดียว)
+          // สองปุ่มแทนที่ช่องเดิมในตำแหน่งเดิม (ไม่ใช่ลบแล้วเพิ่มใหม่)
           Row(
             children: [
               Expanded(
@@ -946,8 +910,7 @@ class _ColumnHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              // มีโมเดลก็โชว์ช่องเลือกเสมอ แม้มีโมเดลเดียว (ตามฝั่งเว็บ 23 ก.ย. 2026)
-              // ไม่งั้นผู้ใช้ไม่รู้ว่าค่าที่อ่านอยู่เป็นสเปคของโมเดลไหน
+              // มีโมเดลก็โชว์ช่องเลือกเสมอ แม้มีโมเดลเดียว
               if (column.product.models.isNotEmpty) ...[
                 const SizedBox(width: 6),
                 Expanded(child: _ModelDropdown(column: column)),
@@ -960,17 +923,17 @@ class _ColumnHeader extends StatelessWidget {
   }
 }
 
-// ตัวเลือกโมเดลบนหัวคอลัมน์ — dropdown เหมือนเว็บ (ComparePage.vue ใช้ <select>)
-// เลือกแล้วสลับโมเดลในช่องนั้นทันที ไม่ต้องเปิดป็อปอัปอีกชั้น
+// dropdown เลือกโมเดลบนหัวคอลัมน์
 class _ModelDropdown extends StatelessWidget {
   const _ModelDropdown({required this.column});
 
   final _CompareColumn column;
 
+  // เปลี่ยนโมเดลของช่องนี้
   void _select(BuildContext context, String modelId) {
     final model = column.product.modelById(modelId);
     if (model == null) return;
-    // เลือกโมเดลที่อีกช่องถืออยู่แล้ว = สลับที่กันสองช่อง (ดู CompareStore.replace)
+    // โมเดลที่อีกช่องถืออยู่ = สลับกัน
     addCompareItem(
       CompareItem(
         productId: column.product.productId,
@@ -988,8 +951,7 @@ class _ModelDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 34,
-      // Container ที่กำหนดความสูงแต่ไม่บอก alignment จะวางลูกชิดบนซ้าย
-      // ตัว dropdown เตี้ยกว่าเม็ดยา ถ้าไม่สั่งตรงนี้ข้อความจะลอยอยู่ข้างบน
+      // ต้องกำหนด alignment ไม่งั้นข้อความลอยบน
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
@@ -998,13 +960,12 @@ class _ModelDropdown extends StatelessWidget {
       ),
       child: DropdownButton<String>(
         value: column.modelId,
-        isExpanded: true, // ไม่ใส่แล้วชื่อโมเดลยาวๆ จะล้นออกนอกเม็ดยา
+        isExpanded: true, // ไม่ใส่แล้วชื่อโมเดลยาวล้นเม็ดยา
         isDense: true,
         underline: const SizedBox.shrink(),
         borderRadius: BorderRadius.circular(12),
         icon: const Icon(LucideIcons.chevronDown, size: 16),
         style: const TextStyle(fontSize: 11.5, color: AppColors.navy900),
-        // รายการที่กางออกมามีที่มากกว่าในเม็ดยา โชว์ราคาต่อท้ายได้ด้วย
         selectedItemBuilder: (context) => column.product.models
             .map(
               (model) => Align(
@@ -1042,7 +1003,7 @@ class _ModelDropdown extends StatelessWidget {
   }
 }
 
-// ปุ่มเม็ดยาเล็กๆ บนหัวคอลัมน์ — สองตัวหน้าตาเหมือนกัน ต่างแค่ไอคอน/ข้อความ
+// ปุ่มเม็ดยาเล็กบนหัวคอลัมน์
 class _HeaderButton extends StatelessWidget {
   const _HeaderButton({
     required this.icon,
@@ -1068,7 +1029,6 @@ class _HeaderButton extends StatelessWidget {
       style: pillButtonStyle(
         foreground: AppColors.navy900,
         background: AppColors.circle,
-        // ไอคอนกับข้อความชิดกันหน่อย คอลัมน์แคบจะได้ไม่ตัดคำ
         padding: const EdgeInsets.symmetric(horizontal: 4),
         fillWidth: true,
       ).copyWith(iconAlignment: IconAlignment.start),
@@ -1076,6 +1036,7 @@ class _HeaderButton extends StatelessWidget {
   }
 }
 
+// แถวสเปค 1 หัวข้อ: แถบชื่อหัวข้อ (ป้ายเหมือน/ต่าง) + ค่าของแต่ละคอลัมน์
 class _AttributeRow extends StatelessWidget {
   const _AttributeRow({
     required this.name,
@@ -1090,7 +1051,7 @@ class _AttributeRow extends StatelessWidget {
   final double columnWidth;
   final bool isSame;
 
-  // มีช่องว่าง "เพิ่มสินค้า" ต่อท้ายหรือไม่ — ต้องเว้นเซลล์เปล่าไว้ให้ตรงกัน
+  // มีช่องว่างต่อท้ายไหม (เว้นเซลล์ให้ตรง)
   final bool hasAddSlot;
 
   @override
@@ -1098,9 +1059,7 @@ class _AttributeRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ชื่อหัวข้อ: แถบเต็มความกว้าง + ป้ายบอกว่าเหมือน/ต่าง
-        // เทาเข้มกว่าพื้นหน้าหนึ่งระดับ — พื้นหน้าเป็น surface แล้ว ถ้าใช้ surface
-        // ตรงนี้ด้วย แถบจะกลืนหายไปกับพื้น
+        // แถบชื่อหัวข้อเทาเข้มกว่าพื้นหน้าหนึ่งระดับ ไม่งั้นกลืน
         Container(
           width: double.infinity,
           color: AppColors.circle,
@@ -1120,7 +1079,6 @@ class _AttributeRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  // ป้าย "เหมือนกัน" พื้นขาว ไม่งั้นกลืนกับแถบหัวข้อที่เป็นสี circle
                   color: isSame ? AppColors.white : AppColors.brand50,
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -1179,9 +1137,7 @@ class _AttributeRow extends StatelessWidget {
   }
 }
 
-// หน้าตอนยังไม่มีสินค้าในตาราง — ทำตามหน้าเว็บ: ไม่ใช่ข้อความเปล่าๆ
-// แต่โชว์ "ช่องว่าง" ของตารางเป็นกรอบประเท่าจำนวนที่เพิ่มได้ ให้เห็นภาพว่า
-// ตารางจะหน้าตาแบบไหนและเพิ่มได้อีกกี่ชิ้น · กดช่องไหนก็ไปหน้าสินค้าทั้งหมด
+// ตะกร้าว่าง: แสดงช่องว่างกรอบประเท่าจำนวนที่เพิ่มได้ กดแล้วไปแท็บสินค้า
 class _EmptyState extends StatelessWidget {
   const _EmptyState({this.onBrowse});
 
@@ -1212,8 +1168,6 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        // ช่องว่างเรียง 2 คอลัมน์เท่าหน้ารายการสินค้า
-        // (จำนวนช่องมาจาก CompareStore.maxItems ไม่ได้ fix ไว้)
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1234,7 +1188,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ช่องว่างหนึ่งช่องในตาราง (กรอบประ + เครื่องหมายบวก) เหมือนหัวคอลัมน์ว่างบนเว็บ
+// ช่องว่าง 1 ช่อง (กรอบประ + เครื่องหมายบวก)
 class _AddSlot extends StatelessWidget {
   const _AddSlot({this.onTap});
 
@@ -1263,8 +1217,7 @@ class _AddSlot extends StatelessWidget {
   }
 }
 
-// กรอบเส้นประแบบเดียวกับ border-dashed ของเว็บ
-// Flutter ไม่มีเส้นประในตัว ต้องวาดเองด้วย CustomPaint
+// กรอบเส้นประ (Flutter ไม่มีในตัว วาดด้วย CustomPaint)
 class DottedBorderBox extends StatelessWidget {
   const DottedBorderBox({super.key, required this.child, this.onTap});
 
@@ -1300,7 +1253,6 @@ class _DashedBorderPainter extends CustomPainter {
       const Radius.circular(12),
     );
 
-    // เดินไปตามเส้นรอบกรอบแล้ววาดทีละช่วง เว้นช่วง ได้เป็นเส้นประ
     const dash = 6.0;
     const gap = 4.0;
     final path = Path()..addRRect(rect);

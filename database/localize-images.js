@@ -1,20 +1,5 @@
 #!/usr/bin/env node
-/**
- * ดึงรูปทั้งหมดที่ DB ยังอ้างถึงเซิร์ฟเวอร์ภายนอก (เว็บต้นแบบ dtcshops.com)
- * มาเก็บไว้ในเครื่องที่ database/uploads/products/ แล้วเขียน path ใน DB ใหม่
- * เป็น /uploads/products/<YYYY-MM>/<ไฟล์>
- *
- * ทำไมต้องมี: ถ้าปล่อยให้ DB เก็บ URL ของเว็บต้นแบบไว้ เบราว์เซอร์ของผู้ใช้
- * จะไปดึงรูปจากเซิร์ฟเวอร์เขาโดยตรง (hotlink) — เน็ตหลุด หรือเขาย้าย/ลบไฟล์
- * เมื่อไหร่ รูปก็หายทันที ซึ่งรับไม่ได้ตอนนำเสนอ
- *
- * รันซ้ำได้เสมอ (idempotent): ค่าที่เป็น /uploads/ อยู่แล้วจะถูกข้าม และไฟล์ที่
- * มีอยู่แล้วบนดิสก์ก็ไม่โหลดซ้ำ
- *
- * ต้องรันทุกครั้งหลัง restore-full-dump.sh หรือหลังสร้าง volume ของ DB ใหม่
- *
- *   node database/localize-images.js
- */
+// ดึงรูปที่ DB ยังอ้างเว็บต้นแบบมาเก็บใน database/uploads/products/ แล้วแก้ path ใน DB (รันซ้ำได้ · รันหลัง restore ทุกครั้ง)
 const { execFileSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -26,7 +11,7 @@ const REMOTE_BASE = 'https://dtcshops.com/api/image/'
 const URL_PREFIX = '/uploads/products/'
 const DEST_ROOT = path.join(__dirname, 'uploads', 'products')
 
-// ตาราง -> คอลัมน์ที่เก็บ path รูป
+// ตาราง → คอลัมน์ที่เก็บ path รูป
 const TARGETS = [
   ['tbl_item', ['itm_image_master', ...Array.from({ length: 9 }, (_, i) => `itm_image_sub${i + 1}`)]],
   ['tbl_item_type', ['thumbnail']],
@@ -35,20 +20,21 @@ const TARGETS = [
   ['tbl_bnn_slide', ['bnn_image_master']],
 ]
 
+// รัน SQL ผ่าน psql ในคอนเทนเนอร์ DB
 const psql = (sql, quiet) =>
   execFileSync('docker', ['exec', '-i', CONTAINER, 'psql', '-U', DB_USER, '-d', DB_NAME, quiet ? '-Atc' : '-c', sql], {
     encoding: 'utf8',
   })
 
-// path ที่ "ยังไม่ localize" = ไม่ว่าง และไม่ได้ขึ้นต้นด้วย /uploads/
+// path ที่ยังไม่ localize = ไม่ว่าง และไม่ขึ้นต้นด้วย /uploads/
 const notLocal = (col) => `${col} IS NOT NULL AND ${col} <> '' AND ${col} NOT LIKE '/uploads/%'`
 
-// ตัด URL เต็มของเว็บต้นแบบออก เหลือ path สัมพัทธ์ (YYYY-MM/ไฟล์) — ข้อมูลจริง
-// เก็บมาทั้งสองแบบปนกัน บางแถวเป็น URL เต็ม บางแถวเป็น path สั้น
+// URL เต็มของเว็บต้นแบบ → path สัมพัทธ์ (ข้อมูลจริงเก็บปนกันทั้งสองแบบ)
 const toRelative = (value) => value.replace(REMOTE_BASE, '')
 
+// เก็บ path → ดาวน์โหลด → แก้ DB → ตรวจซ้ำ
 async function main() {
-  // 1) เก็บ path ที่ยังไม่ localize ทั้งหมดจากทุกตาราง
+  // 1) เก็บ path ที่ยังไม่ localize จากทุกตาราง
   const found = new Set()
   for (const [table, cols] of TARGETS) {
     for (const col of cols) {
@@ -84,7 +70,7 @@ async function main() {
         continue
       }
       const buf = Buffer.from(await res.arrayBuffer())
-      // กันไฟล์ error page/ไฟล์ว่างที่ตอบ 200 มาแต่ไม่ใช่รูป
+      // กันหน้า error/ไฟล์ว่างที่ตอบ 200 แต่ไม่ใช่รูป
       const isImage =
         (buf[0] === 0x89 && buf[1] === 0x50) || (buf[0] === 0xff && buf[1] === 0xd8) || buf.slice(0, 4).toString() === 'RIFF'
       if (!isImage) {
@@ -101,8 +87,7 @@ async function main() {
   console.log(`ดาวน์โหลดใหม่ ${downloaded} ไฟล์, มีอยู่แล้ว ${existed} ไฟล์, ล้มเหลว ${failed.length}`)
   failed.forEach((f) => console.log('  ล้มเหลว:', f))
 
-  // 3) เขียน path ใน DB ใหม่ — เฉพาะแถวที่ไฟล์ปลายทางมีอยู่จริง จะได้ไม่เปลี่ยน
-  //    ลิงก์ที่ยังใช้ได้ให้กลายเป็น 404 เวลาดาวน์โหลดพลาด
+  // 3) แก้ path ใน DB เฉพาะแถวที่ไฟล์มีอยู่จริง (ดาวน์โหลดพลาดจะไม่กลายเป็น 404)
   const ok = [...found].filter((v) => {
     const rel = toRelative(v)
     return /^\d{4}-\d{2}\//.test(rel) && fs.existsSync(path.join(DEST_ROOT, rel))
@@ -123,7 +108,7 @@ async function main() {
   psql(`BEGIN; ${statements.join(' ')} COMMIT;`)
   console.log(`เขียน path ใน DB ใหม่แล้ว ${ok.length} รายการ`)
 
-  // 4) ตรวจซ้ำว่าไม่เหลือ path ที่ชี้ออกนอกแล้วจริง
+  // 4) ตรวจว่าไม่เหลือ path ที่ชี้ออกนอกแล้ว
   let leftover = 0
   for (const [table, cols] of TARGETS) {
     for (const col of cols) {
@@ -134,6 +119,7 @@ async function main() {
   if (leftover !== 0) process.exitCode = 1
 }
 
+// ใส่เครื่องหมายคำพูดให้ค่า SQL
 const quote = (s) => `'${String(s).replace(/'/g, "''")}'`
 
 main().catch((err) => {

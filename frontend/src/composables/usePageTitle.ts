@@ -3,6 +3,7 @@ import { useRoute } from 'vue-router'
 import { useLanguage } from '../language/useLanguage'
 
 export const pageTitleOverride = ref<string | null>(null)
+// ตั้งชื่อแท็บเบราว์เซอร์ตาม meta ของ route (หน้าสินค้าใช้ pageTitleOverride)
 export function usePageTitle() {
   const route = useRoute()
   const { langs } = useLanguage()
@@ -17,7 +18,6 @@ export function usePageTitle() {
       (searchword ? `${langs('searchResultsFor')} "${searchword}"` : null) ??
       (route.meta.titleKey ? langs(route.meta.titleKey) : route.meta.title) ??
       null
-    // ยุบช่องว่างซ้อน (ชื่อสินค้าจริงบางตัวมีช่องว่าง 2 ตัวติดกัน — เบราว์เซอร์ก็ยุบให้อยู่แล้ว)
     document.title = page ? `${page.replace(/\s+/g, ' ').trim()} | ${brand}` : brand
   })
 }

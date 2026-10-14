@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 
-// ตัดชื่อสินค้าเป็นช่วงๆ ให้ช่วงที่ตรงกับคำค้นเป็นตัวหนาพื้นฟ้า
-// (เทียบเท่า highlightSegments() ของฝั่งเว็บ)
-//
-// - ไม่สนตัวพิมพ์เล็ก/ใหญ่
-// - คำค้นหลายคำ ไฮไลต์ให้ทุกคำ
-// - คำค้นที่ไม่เจอในชื่อ ก็แค่ไม่ไฮไลต์ ไม่ทำให้ข้อความหาย
+// ตัดชื่อสินค้าเป็นช่วง ให้ช่วงที่ตรงคำค้น (ทุกคำ ไม่สนตัวพิมพ์) เป็นตัวหนาพื้นฟ้า
 List<TextSpan> highlightSegments(
   String text,
   String query, {
@@ -19,8 +14,7 @@ List<TextSpan> highlightSegments(
   if (words.isEmpty) return [TextSpan(text: text)];
 
   final lower = text.toLowerCase();
-  // ทำเครื่องหมายทีละตัวอักษรว่าอยู่ในช่วงที่ตรงกับคำค้นหรือไม่
-  // วิธีนี้รองรับกรณีคำค้นซ้อนทับกันเองโดยไม่ต้องจัดการเป็นกรณีพิเศษ
+  // ทำเครื่องหมายทีละตัวอักษร รองรับคำค้นที่ซ้อนทับกัน
   final marks = List<bool>.filled(text.length, false);
   for (final word in words) {
     var from = 0;

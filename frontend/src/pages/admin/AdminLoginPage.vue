@@ -1,9 +1,9 @@
 <script setup lang="ts">
+// หน้าล็อกอินแอดมิน
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { useAuthStore } from '../../stores/auth'
-//ข้อความ error
 const ERROR_TEXT: Record<string, string> = {
   missingCredentials: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน',
   invalidCredentials: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
@@ -23,14 +23,13 @@ async function handleSubmit() {
     await auth.login(username.value, password.value)
     router.push('/admin/products')
   } catch {
-    // error is already set in the store
   }
 }
 
 </script>
 
 <template>
-  <!-- <main> = landmark เนื้อหาหลัก (หน้านี้อยู่นอก AdminLayout จึงไม่มี <main> จาก layout) -->
+  <!-- <main> = landmark (หน้านี้อยู่นอก AdminLayout) -->
   <main class="min-h-screen relative flex items-center justify-center overflow-hidden p-4">
     <div
       class="absolute inset-0 bg-cover bg-center scale-110 blur-md brightness-[0.6]"
@@ -44,7 +43,6 @@ async function handleSubmit() {
         <div class="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
       </div>
 
-      <!-- Right panel: the login form -->
       <form @submit.prevent="handleSubmit" class="p-8 sm:p-10 flex flex-col justify-center space-y-4">
         <img loading="lazy" decoding="async" src="/logo-shop.png" class="h-10  w-auto self-start" alt="DTCSHOP" />
         <h1 class="text-xl font-bold text-gray-800">ลงชื่อเข้าสู่ระบบ DTCSHOP</h1>
@@ -89,7 +87,7 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- brand-700 = contrast 4.97:1 กับตัวอักษรขาว (brand-600 ได้แค่ 3.43:1 ไม่ผ่าน WCAG AA 4.5:1) -->
+        <!-- brand-700 ให้ contrast กับตัวขาวผ่าน WCAG AA -->
         <button
           type="submit"
           :disabled="auth.isLoading"

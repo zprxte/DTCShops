@@ -1,15 +1,5 @@
 <script setup lang="ts">
-// หน้าแรกของ Admin — ทำตามหน้าเดียวกันของ back office ต้นแบบ
-// (spd-demo.dtc.co.th:3304): ตัวกรองช่วงวันที่ + การ์ดสรุป 4 ใบ +
-// ตาราง 10 อันดับสินค้าเข้าชมมากที่สุด
-//
-// ตัวเลขทั้งหมดมาจาก tbl_logs ซึ่งเป็นตารางบันทึกกิจกรรมจริงของ
-// dtcshops.com (restore มาพร้อมดัมป์ มีข้อมูลจริงถึง 3 ส.ค. 2026) และ
-// ฝั่ง public ของโปรเจกต์นี้เขียนต่อเข้าไปด้วยแล้ว — ดู
-// backend/src/utils/activityLog.js
-//
-// ต่างจากต้นแบบตรงที่ต้นแบบนับ "ร้านค้า" ของผู้ขายหลายราย ส่วนที่นี่นับ
-// สาขา DTC จาก tbl_shop (ข้อมูลเดียวกับหน้า "ข้อมูลร้านค้า")
+// แดชบอร์ด: ช่วงวันที่ + การ์ดสรุป 4 ใบ + 10 อันดับสินค้าเข้าชมมากสุด (จาก tbl_logs)
 import { onMounted, ref, computed } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { adminAPI } from '../../services/api'
@@ -21,8 +11,7 @@ type TopProduct = {
   views: number
 }
 
-// ตัวเลือกช่วงวันที่ — number = จำนวนวันย้อนหลัง, 'all' = ทั้งหมด,
-// 'custom' = ผู้ใช้เลือกวันเอง
+// ช่วงวันที่: จำนวนวันย้อนหลัง / 'all' / 'custom'
 const RANGE_OPTIONS = [
   { value: '1', label: 'วันนี้' },
   { value: '7', label: '7 วันที่ผ่านมา' },
@@ -32,7 +21,7 @@ const RANGE_OPTIONS = [
   { value: 'custom', label: 'กำหนดเอง' },
 ]
 
-// ข้อมูลจริงในระบบเริ่มตั้งแต่ ม.ค. 2025 — ใช้เป็นจุดเริ่มของตัวเลือก "ทั้งหมด"
+// ข้อมูลจริงเริ่ม ม.ค. 2025 — จุดเริ่มของ "ทั้งหมด"
 const ALL_TIME_START = '2025-01-01'
 
 function toInputDate(d: Date): string {
@@ -48,8 +37,7 @@ const rangeMode = ref('30')
 const customStart = ref(toInputDate(new Date()))
 const customEnd = ref(toInputDate(new Date()))
 
-// ช่วงวันที่ที่จะส่งไป backend ตามตัวเลือกปัจจุบัน (ยังไม่ใช่ช่วงที่โหลดอยู่
-// จริง — จะมีผลต่อเมื่อกดปุ่ม "ค้นหา")
+// ช่วงที่จะส่งไป backend (มีผลเมื่อกด "ค้นหา")
 const pendingRange = computed(() => {
   if (rangeMode.value === 'custom') {
     return { start: customStart.value, end: customEnd.value }
@@ -82,6 +70,7 @@ const cards = computed(() => [
   { label: 'จำนวนร้านค้าทั้งหมด', value: totalShops.value },
 ])
 
+// โหลดสถิติตามช่วงที่เลือก
 async function load() {
   loading.value = true
   error.value = ''
@@ -110,7 +99,6 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <!-- ตัวกรองช่วงวันที่ -->
     <div class="bg-white border rounded-xl p-5 space-y-3">
       <h1 class="text-lg font-bold text-gray-800">วันที่แสดงข้อมูล</h1>
       <div class="flex flex-wrap items-center gap-3">
@@ -122,7 +110,6 @@ onMounted(load)
           <option v-for="opt in RANGE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
 
-        <!-- โหมดกำหนดเอง: เลือกวันเริ่ม-สิ้นสุดเอง / โหมดอื่น: โชว์ช่วงที่คำนวณให้ -->
         <template v-if="rangeMode === 'custom'">
           <input v-model="customStart" type="date" class="border rounded-lg px-3 py-2 text-sm" />
           <span class="text-gray-500">-</span>
@@ -144,7 +131,6 @@ onMounted(load)
 
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
 
-    <!-- การ์ดสรุป -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div v-for="card in cards" :key="card.label" class="bg-white border rounded-xl p-6 text-center">
         <p class="text-sm text-gray-600">{{ card.label }}</p>
@@ -155,10 +141,9 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- 10 อันดับสินค้าเข้าชมมากที่สุด -->
     <div class="bg-white border rounded-xl p-5 space-y-3">
       <h2 id="top-products-heading" class="text-base font-bold text-gray-800">10 อันดับสินค้าเข้าชมมากที่สุด</h2>
-      <!-- tabindex: จอแคบตารางเลื่อนแนวนอนได้ ต้องโฟกัสด้วยคีย์บอร์ดได้ถึงจะเลื่อนด้วยลูกศรได้ -->
+      <!-- tabindex: ตารางเลื่อนแนวนอนได้ ต้องโฟกัสด้วยคีย์บอร์ดได้ -->
       <div class="overflow-x-auto" tabindex="0" role="region" aria-labelledby="top-products-heading">
         <table class="w-full text-sm">
           <thead>

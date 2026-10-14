@@ -12,10 +12,7 @@ import '../utils/compare_actions.dart';
 import '../widgets/async_state.dart';
 import '../widgets/remote_image.dart';
 
-// หน้ารายละเอียดสินค้า — ตาม wireframe จอ Detail:
-// แถบบน (ย้อนกลับ — ไม่มีปุ่มแชร์ตามคำขอผู้ใช้ 25 ก.ย. 2026) → แกลเลอรีรูป → หมวดหมู่/ชื่อ/ราคารวม →
-// เลือกโมเดล → ตัวเลือกเสริม → แท็บ สเปค/รายละเอียด/ประกัน-จัดส่ง →
-// แถบปุ่มล่าง (+ เปรียบเทียบ | สั่งซื้อ)
+// หน้ารายละเอียดสินค้า: แกลเลอรี → ชื่อ/ราคารวม → โมเดล → ตัวเลือกเสริม → แท็บสเปค/รายละเอียด/ประกัน → ปุ่มเปรียบเทียบ | สั่งซื้อ
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId});
 
@@ -29,8 +26,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   late Future<ProductDetail> _future;
 
   int _galleryIndex = 0;
-  String? _modelId; // โมเดลที่เลือกอยู่ (null = สินค้าไม่มีโมเดล)
-  final Set<String> _optionIds = {}; // ตัวเลือกเสริมที่ติ๊กไว้
+  String? _modelId;
+  final Set<String> _optionIds = {};
   int _tab = 0;
 
   @override
@@ -39,13 +36,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _future = ApiService().fetchProductDetail(widget.productId);
   }
 
-  // ราคารวม = ราคาโมเดลที่เลือก + ตัวเลือกเสริมที่ติ๊ก
-  // สินค้าราคา 0 ("ติดต่อสอบถาม") ติ๊กตัวเลือกแล้วยังเป็นติดต่อสอบถาม
-  // เหมือนฝั่งเว็บ — ไม่ใช่ราคาของตัวเลือกล้วนๆ ซึ่งจะทำให้เข้าใจผิด
-  // โมเดลที่เลือกอยู่ (null = สินค้าไม่มีโมเดล)
+  // โมเดลที่เลือกอยู่ (null = ไม่มีโมเดล)
   ProductModelOption? _model(ProductDetail product) =>
       product.models.where((m) => m.modelId == _modelId).firstOrNull;
 
+  // ราคารวม = ราคาโมเดล + ตัวเลือกเสริม · ราคา 0 ยังเป็นติดต่อสอบถาม
   num _total(ProductDetail product) {
     final base = _model(product)?.productPrice ?? product.productPrice;
     if (base == 0) return 0;
@@ -57,7 +52,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return total;
   }
 
-  // สเปคที่แสดง = สเปคของสินค้า ทับด้วยสเปคเฉพาะโมเดลที่เลือก
+  // สเปคที่แสดง = สเปคสินค้า ทับด้วยสเปคเฉพาะโมเดล
   List<ProductSpec> _specs(ProductDetail product) {
     final merged = <String, String>{};
     for (final spec in product.specs) {
@@ -93,7 +88,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           }
 
           final product = snapshot.data!;
-          // ครั้งแรกที่ข้อมูลมาถึง ให้เลือกโมเดลแรกไว้ก่อน
+          // ข้อมูลมาครั้งแรก เลือกโมเดลแรกไว้
           _modelId ??= product.models.isEmpty
               ? null
               : product.models.first.modelId;
@@ -164,7 +159,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 TextSpan(
                   text: formatPrice(_total(product)),
                   children: [
-                    // ราคา 0 = ติดต่อสอบถาม ไม่มีหน่วย
                     if (_total(product) != 0)
                       TextSpan(
                         text: ' ${priceUnitLabel(product.categoryId)}',
@@ -260,11 +254,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       height: 280,
       child: Stack(
         children: [
-          // ปัดซ้าย/ขวาดูรูปถัดไป ตาม wireframe
           PageView.builder(
             itemCount: product.gallery.length,
             onPageChanged: (index) => setState(() => _galleryIndex = index),
-            // พื้นขาวให้กลืนกับพื้นขาวที่ติดมาในไฟล์รูป (ดู product_card.dart)
             itemBuilder: (context, index) => Container(
               color: AppColors.white,
               padding: const EdgeInsets.all(16),
@@ -439,8 +431,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: ValueListenableBuilder<List<CompareItem>>(
               valueListenable: CompareStore.instance.items,
               builder: (context, items, _) {
-                // ดูถึงระดับโมเดล: สินค้าตัวเดียวกันคนละโมเดลเป็นคนละช่อง
-                // เลือกโมเดลอื่นแล้วปุ่มต้องกลับเป็น "เปรียบเทียบ" ให้เพิ่มได้อีก
+                // เช็คถึงระดับโมเดล — เลือกโมเดลอื่นแล้วปุ่มกลับเป็น "เปรียบเทียบ"
                 final inCompare = items.any(
                   (item) =>
                       item.productId == product.productId &&
@@ -492,10 +483,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  // เพิ่ม/เอาออกจากตาราง เป็นช่องของโมเดลที่กำลังดู
   void _toggleCompare(ProductDetail product, bool inCompare) {
-    // เพิ่มเป็นช่องของ "โมเดลที่กำลังดูอยู่" เทียบข้ามโมเดลของสินค้าเดียวกันได้
-    // ราคาใช้ราคาโมเดลล้วนๆ ไม่รวมตัวเลือกเสริมที่ติ๊กไว้ เพราะตัวเลือกเสริม
-    // ไม่ได้เข้าตารางเปรียบเทียบ (คำขอผู้ใช้ 9 ก.ย. 2026 ฝั่งเว็บ)
+    // ราคาโมเดลล้วน ไม่รวมตัวเลือกเสริม (ตัวเลือกไม่เข้าตารางเปรียบเทียบ)
     final model = _model(product);
     if (inCompare) {
       removeCompareModel(product.productId, model?.modelId);
@@ -513,7 +503,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  // ปุ่มสั่งซื้อ = เลือกแพลตฟอร์ม (ระบบไม่มีตะกร้าของตัวเอง ส่งต่อร้านค้า)
+  // ปุ่มสั่งซื้อ: เลือกร้าน แล้วเปิดแอป/เว็บของร้านนั้น
   void _showStores(ProductDetail product) {
     showModalBottomSheet<void>(
       context: context,
@@ -534,7 +524,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   trailing: const Icon(LucideIcons.externalLink, size: 18),
                   onTap: () {
                     Navigator.pop(context);
-                    // ระบบไม่มีตะกร้าของตัวเอง ส่งต่อไปแอป/เว็บของร้านค้า
                     openExternalLink(context, entry.value, label: entry.key);
                   },
                 ),

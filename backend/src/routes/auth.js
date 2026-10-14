@@ -9,14 +9,10 @@ const { revokeToken, isRevoked } = require('../utils/tokenBlacklist')
 const prisma = new PrismaClient()
 
 const JWT_SECRET = process.env.JWT_SECRET
-// ค่าสำรอง '2h' — ถ้า .env ไม่มีบรรทัดนี้ jwt.sign จะได้ expiresIn: undefined
-// แล้วออก token ที่ไม่มีวันหมดอายุแบบเงียบๆ
+// ต้องมีค่าสำรอง — expiresIn: undefined = token ไม่มีวันหมดอายุแบบเงียบๆ
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '2h'
 
-/**
- * POST /api/auth/login
- * Body: { username, password }
- */
+// POST /api/auth/login — ตรวจ username/password แล้วออก JWT
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body
@@ -35,8 +31,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ code: 'invalidCredentials', message: 'username หรือ password ไม่ถูกต้อง' })
     }
 
-    // jti = รหัสประจำ token ใบนี้ ต้องมีถึงจะสั่งยกเลิกทีหลังได้ (ดู utils/tokenBlacklist.js)
-    // ไม่มีมันจะแยกไม่ออกว่า token ใบไหนคือใบที่ผู้ใช้เพิ่งกดออกจากระบบ
+    // jti = รหัสประจำ token ต้องมีถึงจะยกเลิกทีหลังได้
     const token = jwt.sign(
       { admin_id: admin.user_id, username: admin.username, jti: crypto.randomUUID() },
       JWT_SECRET,
@@ -53,32 +48,20 @@ router.post('/login', async (req, res) => {
   }
 })
 
-/**
- * POST /api/auth/logout — ยกเลิก token ใบที่ส่งมาทันที
- *
- * ผ่าน authMiddleware ก่อน จึงมั่นใจว่า token ถูกต้องและยังไม่หมดอายุ — ไม่งั้นใครก็
- * ยิง jti มั่วๆ มาถมบัญชีดำจนหน่วยความจำเต็มได้
- *
- * ตอบ 200 เสมอแม้ยกเลิกไม่ได้ (token รุ่นเก่าที่ไม่มี jti) เพราะฝั่งหน้าเว็บลบ token
- * ทิ้งไปแล้วในทุกกรณี การตอบ error กลับไปมีแต่จะทำให้ผู้ใช้เห็นข้อความผิดพลาดทั้งที่
- * ออกจากระบบสำเร็จ · ฟิลด์ revoked บอกความจริงไว้ให้ตรวจสอบได้
- */
+// POST /api/auth/logout — ยกเลิก token ใบนี้ทันที (ตอบ 200 เสมอ · revoked บอกว่ายกเลิกได้จริงไหม)
 router.post('/logout', authMiddleware, (req, res) => {
   const revoked = revokeToken(req.admin)
   res.json({ message: 'ออกจากระบบแล้ว', revoked })
 })
 
-/**
- * GET /api/auth/me — verify token and return admin info
- */
+// GET /api/auth/me — ตรวจ token แล้วคืนข้อมูลแอดมิน
 router.get('/me', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1]
     if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
     const decoded = jwt.verify(token, JWT_SECRET)
-    // เส้นทางนี้ตรวจ token เองไม่ได้ผ่าน authMiddleware จึงต้องเช็คบัญชีดำเองด้วย
-    // ไม่งั้น token ที่กดออกจากระบบไปแล้วจะยังผ่านด่านนี้ และหน้าเว็บจะเข้าใจว่ายังล็อกอินอยู่
+    // เส้นนี้ไม่ผ่าน authMiddleware จึงต้องเช็คบัญชีดำเอง
     if (isRevoked(decoded.jti)) return res.status(401).json({ message: 'Token has been revoked' })
     const admin = await prisma.tbl_users.findFirst({
       where: { user_id: decoded.admin_id, flag: '1' },

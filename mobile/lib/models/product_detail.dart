@@ -1,4 +1,4 @@
-// สินค้าหนึ่งตัวแบบเต็ม (จาก GET /products/:id) — ใช้ในหน้ารายละเอียดสินค้า
+// สินค้า 1 ตัวแบบเต็ม (GET /products/:id) สำหรับหน้ารายละเอียด
 class ProductDetail {
   final String productId;
   final String productName;
@@ -36,7 +36,7 @@ class ProductDetail {
         .whereType<String>()
         .toList();
 
-    // สินค้าที่ไม่มีแกลเลอรี ใช้รูปหลักแทน จะได้ไม่เป็นช่องว่างเปล่า
+    // ไม่มีแกลเลอรีใช้รูปหลักแทน
     if (gallery.isEmpty && json['product_image'] != null) {
       gallery.add(json['product_image'].toString());
     }
@@ -76,7 +76,7 @@ class ProductDetail {
   }
 }
 
-// โมเดลของสินค้า — เลือกแล้วราคาเปลี่ยน และสเปคบางข้อถูก override
+// โมเดลของสินค้า (ราคา + สเปคที่เขียนทับ)
 class ProductModelOption {
   final String modelId;
   final String modelName;
@@ -101,7 +101,7 @@ class ProductModelOption {
       );
 }
 
-// อุปกรณ์เสริม เช่น SD Card — ติ๊กแล้วบวกราคาเพิ่ม
+// อุปกรณ์เสริม (ติ๊กแล้วบวกราคา)
 class ProductAddon {
   final String optionId;
   final String optionName;
@@ -120,7 +120,7 @@ class ProductAddon {
   );
 }
 
-// สเปค 1 ข้อ (หัวข้อ + ค่า)
+// สเปค 1 ข้อ
 class ProductSpec {
   final String name;
   final String value;

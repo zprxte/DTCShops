@@ -9,13 +9,11 @@ import '../services/api_service.dart';
 import '../stores/search_history.dart';
 import 'product_detail_screen.dart';
 
-// หน้าค้นหา — หน้าตาตาม wireframe "Wireframe แอป DTC Compare" จอ Search:
-// แถบบนเป็นปุ่มย้อนกลับ + ช่องค้นหาทรงแคปซูลขอบฟ้า
-// ด้านล่างเป็นรายการคำแนะนำ (สูงสุด 8) ปิดท้ายด้วยแถว "ดูผลการค้นหาทั้งหมด"
+// หน้าค้นหา: ช่องค้นหาแคปซูล + ประวัติ (ตอนช่องว่าง) / ประวัติที่ตรง + คำแนะนำสินค้า (ตอนพิมพ์)
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, this.initialQuery});
 
-  // คำค้นเดิม (เปิดจากหน้าผลการค้นหา) — ใส่ในช่องให้เลย ผู้ใช้แก้ต่อได้
+  // คำค้นเดิม (เปิดจากหน้าผลค้นหา) ใส่ในช่องให้แก้ต่อ
   final String? initialQuery;
 
   @override
@@ -40,16 +38,14 @@ class _SearchScreenState extends State<SearchScreen> {
           if (mounted) setState(() => _history = items);
         })
         .catchError((Object e) {
-          // ยังไม่ได้ build ใหม่หลังลง shared_preferences → ใช้แอปต่อได้
-          // แค่ไม่มีประวัติ และเห็นสาเหตุจริงใน console
+          // โหลดประวัติไม่ได้ก็ใช้ต่อได้ แค่ไม่มีประวัติ
           debugPrint('โหลดประวัติการค้นหาไม่ได้: $e');
         });
     final initial = widget.initialQuery;
     if (initial != null && initial.isNotEmpty) {
       _controller.text = initial;
-      // วางเคอร์เซอร์ท้ายคำ จะได้พิมพ์ต่อได้เลย
       _controller.selection = TextSelection.collapsed(offset: initial.length);
-      _onChanged(initial); // ดึงคำแนะนำของคำเดิมไว้ให้ด้วย
+      _onChanged(initial);
     }
   }
 
@@ -60,7 +56,7 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  // พิมพ์แล้วรอ 300ms ค่อยยิง — ไม่งั้นพิมพ์ 10 ตัวอักษร = เรียก API 10 ครั้ง
+  // พิมพ์แล้วหน่วง 300ms ค่อยดึงคำแนะนำ
   void _onChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () async {
@@ -73,10 +69,7 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  // ไม่ได้กดคำแนะนำ (กด Enter หรือแถว "ดูผลการค้นหาทั้งหมด")
-  // → ส่งคำค้นกลับให้หน้าที่เปิดเรามา แล้วปิดตัวเอง
-  // ผลการค้นหาไปแสดงในแท็บสินค้า (เหมือนเว็บที่ค้นแล้วไป /products?searchword=)
-  // ไม่ใช่เปิดหน้าใหม่ทับ ไม่งั้นค้น 3 ครั้งจะมีหน้าซ้อนกัน 3 ชั้นและแถบแท็บหาย
+  // ค้นทั้งคำ: ส่งคำกลับให้หน้าที่เปิดมา แล้วไปแสดงผลในแท็บสินค้า (ไม่เปิดหน้าซ้อน)
   void _search(String word) {
     final q = word.trim();
     if (q.isEmpty) return;
@@ -127,7 +120,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     final query = _controller.text.trim();
 
-    // ช่องว่าง → ประวัติการค้นหาทั้งหมด (แบบ YouTube ตอนเพิ่งแตะช่องค้นหา)
+    // ช่องว่าง → ประวัติทั้งหมด
     if (query.isEmpty) {
       if (_history.isNotEmpty) return _historyList();
       return _centered(
@@ -137,8 +130,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    // กำลังพิมพ์ → ประวัติที่ตรงกับคำค้นขึ้นก่อน ตามด้วยคำแนะนำจาก API
-    // (เปิดจากหน้าผลการค้นหา คำเดิมในช่องก็อยู่ในประวัติ จึงยังเห็นประวัติ)
+    // กำลังพิมพ์ → ประวัติที่ตรงก่อน แล้วคำแนะนำจาก API
     final matched = _matchingHistory(query);
     if (matched.isNotEmpty || _suggestions.isNotEmpty) {
       return _suggestionList(query, matched);
@@ -159,9 +151,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ประวัติที่มีคำค้นอยู่ข้างใน — ขึ้นต้นด้วยคำค้นมาก่อน ตามด้วยที่อยู่กลางคำ
-  // จำกัด 3 คำ ไม่งั้นประวัติดันคำแนะนำสินค้าตกจอ
-  // อยู่ในเครื่องอยู่แล้ว จึงโผล่ทันทีที่พิมพ์ ไม่ต้องรอ debounce
+  // ประวัติที่มีคำค้น (ขึ้นต้นด้วยมาก่อน) สูงสุด 3 คำ
   List<String> _matchingHistory(String query) {
     final q = query.toLowerCase();
     final starts = <String>[];
@@ -177,13 +167,13 @@ class _SearchScreenState extends State<SearchScreen> {
     return [...starts, ...contains].take(3).toList();
   }
 
+  // ลบคำออกจากประวัติ
   Future<void> _removeHistory(String word) async {
     final items = await SearchHistory.instance.remove(word);
     if (mounted) setState(() => _history = items);
   }
 
-  // แถวประวัติ 1 คำ: นาฬิกา, คำค้น (ส่วนที่ตรงเป็นตัวหนา), ✕ ลบออก
-  // กดแถว = ค้นคำนั้นซ้ำทันที
+  // แถวประวัติ 1 คำ — กดแล้วค้นซ้ำ
   Widget _historyRow(String word, {String query = ''}) {
     return _SuggestionRow(
       icon: LucideIcons.history,
@@ -202,7 +192,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ค้นหาล่าสุด — เก็บในเครื่อง 10 คำล่าสุด กดคำเดิมแล้วค้นซ้ำได้ทันที
+  // ประวัติ 10 คำล่าสุด
   Widget _historyList() {
     return ListView(
       padding: EdgeInsets.zero,
@@ -232,8 +222,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ระหว่างพิมพ์ — ประวัติที่ตรง (นาฬิกา) → คำแนะนำสินค้า (แว่นขยาย)
-  // รวมในรายการเดียวแบบ YouTube · ค้นทั้งคำ = กด Enter บนแป้นพิมพ์
+  // ประวัติที่ตรง (นาฬิกา) + คำแนะนำสินค้า (แว่นขยาย) ในรายการเดียว
   Widget _suggestionList(String query, List<String> matched) {
     return ListView(
       padding: EdgeInsets.zero,
@@ -244,7 +233,7 @@ class _SearchScreenState extends State<SearchScreen> {
             icon: LucideIcons.search,
             name: s.productName,
             query: query,
-            // กดคำแนะนำ = เข้าหน้าสินค้านั้นเลย ไม่ต้องค้นซ้ำ
+            // กดคำแนะนำ = เข้าหน้าสินค้านั้นเลย
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProductDetailScreen(productId: s.productId),
@@ -293,7 +282,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 }
 
-// แถบบน: ปุ่มย้อนกลับ + ช่องค้นหาทรงแคปซูลขอบฟ้า (ตาม wireframe)
+// แถบบน: ย้อนกลับ + ช่องค้นหาแคปซูล
 class _SearchHeader extends StatelessWidget {
   const _SearchHeader({
     required this.controller,
@@ -346,7 +335,6 @@ class _SearchHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // ปุ่มล้างคำค้น โผล่เฉพาะตอนมีข้อความ
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: controller,
                     builder: (context, value, _) => value.text.isEmpty
@@ -377,8 +365,7 @@ class _SearchHeader extends StatelessWidget {
   }
 }
 
-// แถวรายการสูง 52 — ใช้ทั้งประวัติ (นาฬิกา + ✕) และคำแนะนำสินค้า (แว่นขยาย)
-// ส่วนที่ตรงกับคำค้นเป็นตัวหนา
+// แถวรายการสูง 52 (ส่วนที่ตรงคำค้นเป็นตัวหนา)
 class _SuggestionRow extends StatelessWidget {
   const _SuggestionRow({
     required this.icon,
@@ -394,12 +381,10 @@ class _SuggestionRow extends StatelessWidget {
   final String query;
   final VoidCallback onTap;
 
-  // ไม่ส่ง = ไม่มีอะไรท้ายแถว
   final Widget? trailing;
   final int maxLines;
 
-  // ทำตัวหนาเฉพาะช่วงที่ตรงกับคำค้น (ไม่สนตัวพิมพ์เล็ก/ใหญ่)
-  // ช่วยให้ผู้ใช้เห็นว่าทำไมรายการนี้ถึงขึ้นมา
+  // ทำตัวหนาเฉพาะช่วงที่ตรงคำค้น
   List<TextSpan> _spans() {
     final q = query.trim();
     if (q.isEmpty) return [TextSpan(text: name)];
@@ -423,7 +408,6 @@ class _SuggestionRow extends StatelessWidget {
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(minHeight: 52),
-        // ปุ่ม ✕ มีระยะกดในตัวแล้ว จึงลดขอบขวา
         padding: EdgeInsets.only(left: 16, right: trailing == null ? 16 : 4),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppColors.surface)),

@@ -1,8 +1,5 @@
 <script setup lang="ts">
-// ป็อปอัปเลือกโมเดลก่อนเพิ่มเข้าตารางเปรียบเทียบ — เปิดจากปุ่ม "เปรียบเทียบ"
-// บนการ์ดสินค้า (ProductCard.vue) เฉพาะสินค้าที่มีมากกว่า 1 โมเดล
-// กดโมเดลที่ยังไม่อยู่ในตาราง = เพิ่มแล้วปิดป็อปอัป
-// กดโมเดลที่อยู่ในตารางแล้ว = เอาช่องนั้นออก (ป็อปอัปยังเปิดอยู่ ให้เลือกโมเดลอื่นต่อได้)
+// ป็อปอัปเลือกโมเดลก่อนเพิ่มเข้าตารางเปรียบเทียบ (สินค้าหลายโมเดล) — กดโมเดลที่อยู่ในตารางแล้ว = เอาออก
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, X } from 'lucide-vue-next'
 import { useCompareStore } from '../../stores/compare'
@@ -22,10 +19,12 @@ const compareStore = useCompareStore()
 const { langs } = useLanguage()
 const dialogEl = ref<HTMLElement | null>(null)
 
+// โมเดลนี้อยู่ในตารางแล้วไหม
 function isAdded(model: ProductModel) {
   return compareStore.isExactInCompare(props.productId, model.model_id)
 }
 
+// เพิ่ม/เอาออกโมเดลนี้ (เพิ่มสำเร็จแล้วปิดป็อปอัป)
 function toggleModel(model: ProductModel) {
   if (isAdded(model)) {
     compareStore.removeItemExact(props.productId, model.model_id)
@@ -38,7 +37,7 @@ function toggleModel(model: ProductModel) {
     product_price: Number(model.product_price) || 0,
     model_id: model.model_id,
   })
-  // addItem() ปฏิเสธเองพร้อม toast ถ้าตารางเต็มตามขนาดที่ผู้ใช้เลือก — ปิดเฉพาะตอนเพิ่มได้จริง
+  // addItem() ปฏิเสธเองพร้อม toast ถ้าตารางเต็ม
   if (isAdded(model)) emit('close')
 }
 
@@ -49,7 +48,7 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-// เปิดแล้วโฟกัสโมเดลแรก ใช้คีย์บอร์ดเลือกต่อได้ทันที + ฟัง Esc เฉพาะตอนเปิด
+// เปิดแล้วโฟกัสโมเดลแรก + ฟัง Esc เฉพาะตอนเปิด
 watch(
   () => props.open,
   (isOpen) => {
@@ -66,8 +65,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <!-- Teleport ออกไปที่ body เพราะการ์ดสินค้าทั้งใบเป็น <router-link> —
-       ถ้าอยู่ข้างใน คลิกในป็อปอัปจะไหลไปถึงลิงก์และพาเปลี่ยนหน้า -->
+  <!-- Teleport ไป body เพราะการ์ดทั้งใบเป็น router-link คลิกในป็อปอัปจะพาเปลี่ยนหน้า -->
   <Teleport to="body">
     <div v-if="open" class="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4" @click="emit('close')">
       <div

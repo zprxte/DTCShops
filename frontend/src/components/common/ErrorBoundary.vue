@@ -1,15 +1,5 @@
 <script setup lang="ts">
-/**
- * กันหน้าจอขาวทั้งหน้าเวลาคอมโพเนนต์ลูกพัง (Week 14 — error boundaries)
- *
- * ก่อนหน้านี้ระบบดักเฉพาะ error ที่เกิดตอนยิง API ผ่าน try/catch ของแต่ละหน้า
- * เท่านั้น — ถ้าพังตอน render (เช่นข้อมูลจริงมีรูปแบบไม่ตรงกับที่โค้ดคาดไว้)
- * Vue จะถอดทั้ง component tree ทิ้งแล้วเหลือหน้าขาวโดยไม่มีข้อความอะไรเลย
- * ตัวนี้ดักไว้ที่ระดับ <router-view> แล้วแสดงกล่องแจ้งเตือน + ปุ่มลองใหม่แทน
- *
- * onErrorCaptured คืน false เพื่อหยุดไม่ให้ error วิ่งต่อขึ้นไปข้างบน (เรา
- * จัดการเองแล้ว) แต่ยัง console.error ไว้ให้ดีบักได้เหมือนเดิม
- */
+// ดัก error ตอน render ของคอมโพเนนต์ลูก แสดงกล่องแจ้งเตือน + ปุ่มลองใหม่แทนหน้าขาว
 import { ref, onErrorCaptured, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { AlertTriangle, RotateCw } from 'lucide-vue-next'
@@ -20,7 +10,7 @@ const props = withDefaults(defineProps<{ thai?: boolean }>(), { thai: false })
 const { langs } = useLanguage()
 const route = useRoute()
 const failed = ref(false)
-// รีเซ็ตเองเมื่อผู้ใช้เปลี่ยนหน้า — ไม่ให้ error ของหน้าเดิมค้างบังหน้าถัดไป
+// เปลี่ยนหน้าแล้วรีเซ็ต ไม่ให้ error ค้างบังหน้าถัดไป
 watch(() => route.fullPath, () => { failed.value = false })
 
 onErrorCaptured((err) => {
@@ -29,8 +19,7 @@ onErrorCaptured((err) => {
   return false
 })
 
-// ฝั่งแอดมินเป็นภาษาไทยล้วน ไม่ผ่าน i18n (ดู CLAUDE.md) จึงส่ง thai ให้ใช้
-// ข้อความไทยตรงๆ แทนการเรียก langs()
+// thai = ใช้ข้อความไทยตรงๆ (หลังบ้านไม่มี i18n)
 const title = () => (props.thai ? 'เกิดข้อผิดพลาด' : langs('errorBoundaryTitle'))
 const body = () => (props.thai ? 'ส่วนนี้ทำงานผิดพลาด ลองโหลดหน้านี้ใหม่อีกครั้ง' : langs('errorBoundaryBody'))
 const retry = () => (props.thai ? 'โหลดใหม่' : langs('errorBoundaryRetry'))

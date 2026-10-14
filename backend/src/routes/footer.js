@@ -4,8 +4,7 @@ const { PrismaClient } = require('@prisma/client')
 const { cached } = require('../utils/cache')
 const prisma = new PrismaClient()
 
-// เนื้อหา footer มาจากตาราง CMS ที่แทบไม่เปลี่ยน แต่ทุกหน้าฝั่ง public เรียกใช้
-// ตอน mount — แคชไว้ 5 นาที (หน้าแอดมิน "footer" ล้างแคชให้เองตอนบันทึก)
+// โหลดเนื้อหา footer จัดกลุ่มตามประเภท (แคช 5 นาที)
 async function loadFooter() {
   const rows = await prisma.tbl_footer.findMany({
     where: { flag: '1', deleted_at: null },
@@ -20,9 +19,7 @@ async function loadFooter() {
     else if (r.name === 'ที่อยู่') company.address = r.title
   }
 
-  // The 'email' row's title is a full `<a href="mailto:...">` anchor in
-  // production (the real site injects it via v-html) — strip tags so the
-  // frontend gets plain text and builds its own mailto: link/icon instead.
+  // แถว email เก็บเป็นแท็ก <a> — ตัดแท็กให้เหลือข้อความ
   const contact = {}
   for (const r of byType('head')) {
     if (r.head_title) contact[r.head_title] = r.title ? r.title.replace(/<[^>]+>/g, '').trim() : r.title
@@ -45,6 +42,7 @@ async function loadFooter() {
   return { company, contact, menu, certifications, social }
 }
 
+// GET /api/footer
 router.get('/', async (_req, res) => {
   try {
     res.json(await cached('footer', loadFooter))

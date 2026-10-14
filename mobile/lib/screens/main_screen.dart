@@ -8,6 +8,7 @@ import 'compare_screen.dart';
 import 'home_screen.dart';
 import 'products_screen.dart';
 
+// โครงแอป: แถบเมนูล่าง 3 แท็บ (IndexedStack — สลับแท็บแล้วหน้าเดิมไม่ถูกสร้างใหม่)
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -21,6 +22,7 @@ class _MainScreenState extends State<MainScreen> {
   String? _searchword;
   int _seq = 0;
 
+  // สลับไปแท็บสินค้าพร้อมหมวดหรือคำค้น
   void _openProducts({String? categoryId, String? searchword}) {
     setState(() {
       _categoryId = categoryId;
@@ -50,13 +52,11 @@ class _MainScreenState extends State<MainScreen> {
           CompareScreen(onBrowse: () => _openProducts()),
         ],
       ),
-      // พื้นขาว + เส้นขอบบน แบบเดียวกับหัวหน้าจอ — ค่าเริ่มต้นของ Material 3
-      // เป็นเทาอมฟ้า (#EBEEF3) ต่างจากพื้นขาวของหน้า เห็นเป็นสองสีท้ายจอ
+      // พื้นขาว + เส้นขอบบน (ค่าเริ่มต้นของ M3 เป็นเทาอมฟ้า)
       bottomNavigationBar: DecoratedBox(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
-        // ไม่มีแคปซูลสีหลังไอคอนแท็บที่เลือก (ผู้ใช้ขอ) — บอกแท็บที่เลือกด้วยสีแบรนด์แทน
         child: NavigationBarTheme(
           data: NavigationBarThemeData(
             iconTheme: WidgetStateProperty.resolveWith(
@@ -82,8 +82,6 @@ class _MainScreenState extends State<MainScreen> {
             elevation: 0,
             selectedIndex: _index,
             onDestinationSelected: (idx) => setState(() => _index = idx),
-            // ไอคอนเส้นของ Lucide ทั้งตอนเลือกและไม่เลือก บอกแท็บที่เลือกด้วยสีอย่างเดียว
-            // (เคยลองไอคอนทึบของ Material ตอนเลือก ผู้ใช้ดูแล้วไม่สวย เปลี่ยนกลับ)
             destinations: [
               NavigationDestination(
                 icon: const Icon(LucideIcons.house),
@@ -104,7 +102,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  // ป้ายตัวเลขบอกจำนวนสินค้าในตะกร้าเปรียบเทียบ อัปเดตเองทันที
+  // ป้ายจำนวนสินค้าในตะกร้าเปรียบเทียบ
   Widget _compareBadge(Widget icon) {
     return ValueListenableBuilder<List<CompareItem>>(
       valueListenable: CompareStore.instance.items,

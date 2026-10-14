@@ -7,7 +7,11 @@
     "start": "node src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:unit": "node --test \"test/**/*.unit.test.js\"",
+    "test:api": "node --test --test-concurrency=1 test/public-api.test.js test/admin-api.test.js",
+    "test:search": "docker exec -w /app product_compare_api node --test test/search-queries.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.17.0",

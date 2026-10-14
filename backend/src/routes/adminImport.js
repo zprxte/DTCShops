@@ -1,12 +1,4 @@
-// ===== นำเข้าสินค้าและสเปคจาก Excel (A10 — ทำกลับมา 25 ก.ย. 2026) =====
-// mount ใต้ routes/admin.js (/api/admin/import) จึงผ่าน JWT + sanitize + ล้างแคชชุดเดียวกัน
-//
-//   GET  /template  เทมเพลต .xlsx สร้างจาก DB ทุกครั้ง (มีสินค้า/สเปคปัจจุบันเติมไว้ให้แก้ต่อ)
-//   POST /parse     อัปโหลดไฟล์ → { rows, plan } ยังไม่เขียนอะไร
-//   POST /plan      { rows, attribute_map } → plan — ใช้ตอนแอดมินเลือกหัวข้อสเปคในหน้าพรีวิว
-//   POST /commit    { rows, attribute_map } → คำนวณแผนซ้ำ ถ้าไม่มีข้อผิดพลาดค่อยเขียนใน transaction เดียว
-//
-// logic ตรวจข้อมูลทั้งหมดอยู่ใน utils/importPlan.js (ไม่แตะ DB, มีเทสต์)
+// นำเข้าสินค้า + สเปคจาก Excel (/api/admin/import): template / parse / plan / commit — ตรรกะตรวจอยู่ใน utils/importPlan.js
 const express = require('express')
 const multer = require('multer')
 const ExcelJS = require('exceljs')
@@ -20,14 +12,14 @@ const { saveImage, removeImage, imageExists } = require('../utils/imageStore')
 const router = express.Router()
 const prisma = new PrismaClient()
 
-// ชื่อชีตของเทมเพลตรุ่นก่อน (products/specs และชื่อไทย) — ยังอ่านได้ แต่เทมเพลตใหม่เป็นชีตละหมวด
+// ชื่อชีตของเทมเพลตรุ่นก่อน — ยังอ่านได้
 const PRODUCT_SHEET = 'products'
 const SPEC_SHEET = 'specs'
 const SHEET_ALIASES = { [PRODUCT_SHEET]: ['สินค้า'], [SPEC_SHEET]: ['สเปค'] }
-const LIST_SHEET = '_lists' // ชีตซ่อนสำหรับ dropdown (ชื่ออังกฤษ เลี่ยงปัญหาเครื่องหมายคำพูดในสูตร)
+const LIST_SHEET = '_lists' // ชีตซ่อนสำหรับ dropdown
 const MAX_ROWS = 3000
-const MAX_SPEC_ROWS = 30000 // ค่าคุณสมบัติ 1 ช่อง = 1 แถวภายใน (สินค้า × หัวข้อ)
-const HEADER_FILL = 'FF4472C4' // สีหัวตารางตามภาพเทมเพลตที่ผู้ใช้ส่งมา
+const MAX_SPEC_ROWS = 30000 // ค่าคุณสมบัติ 1 ช่อง = 1 แถวภายใน
+const HEADER_FILL = 'FF4472C4'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,11 +27,10 @@ const upload = multer({
   fileFilter: (_req, file, cb) => cb(null, /\.xlsx$/i.test(file.originalname)),
 })
 
-// ภาพข้อมูลปัจจุบันที่ planner ใช้เทียบ — ค่าทุกตัวอยู่ในรูปเดียวกับที่อ่านจากไฟล์
+// ภาพข้อมูลปัจจุบันจาก DB ในรูปเดียวกับที่อ่านจากไฟล์ (ให้ planner เทียบ)
 async function loadSnapshot(db = prisma) {
   const [items, categories, attributes, values] = await Promise.all([
     db.tbl_item.findMany(),
-    // ไม่กรอง flag — ตรงกับรายการในหน้าแอดมิน (GET /admin/categories, /admin/attributes)
     db.tbl_item_type.findMany({ orderBy: { itm_type_desc: 'asc' } }),
     db.tbl_attribute.findMany({ orderBy: { attribute_name: 'asc' } }),
     db.tbl_attribute_value.findMany({ where: { model_code: null } }),
@@ -58,8 +49,7 @@ async function loadSnapshot(db = prisma) {
       lazada_link: item.itm_lazada_end_point || null,
       tiktok_link: item.itm_tiktok_end_point || null,
       line_link: item.itm_line_end_point || null,
-      // ฟอร์มแอดมินแสดง/บันทึกรายละเอียดเป็นข้อความล้วนอยู่แล้ว — เทียบแบบเดียวกัน
-      // ไม่งั้นสินค้าที่ DB ยังเก็บเป็น HTML จะขึ้น "แก้" ทุกครั้งทั้งที่ไม่ได้แตะ
+      // เทียบรายละเอียดเป็นข้อความล้วน ไม่งั้นสินค้าที่เก็บ HTML ขึ้น "แก้" ทุกครั้ง
       description: stripHtml(item.itm_information) || null,
       product_image: item.itm_image_master || null,
       is_active: item.itm_flag !== '0',
@@ -73,8 +63,7 @@ async function loadSnapshot(db = prisma) {
   }
 }
 
-// ตรวจรูปทุกค่าที่ต่างจากของเดิมก่อนสร้างแผน — ลิงก์ภายนอกลองโหลดจริง (มีแคช 10 นาที)
-// ผลใส่ใน snapshot.imageChecks ให้ planner ขึ้น error ในพรีวิวได้ตั้งแต่ก่อนกดยืนยัน
+// ตรวจรูปที่เปลี่ยนก่อนสร้างแผน (ลิงก์ภายนอกลองโหลดจริง) ให้พรีวิวขึ้น error ได้ก่อนกดยืนยัน
 async function attachImageChecks(rows, snapshot) {
   const pending = new Set()
   for (const r of rows.products || []) {
@@ -97,22 +86,21 @@ async function attachImageChecks(rows, snapshot) {
   return snapshot
 }
 
-// ---------- เทมเพลต ----------
-// 1 ชีตต่อ 1 หมวดหมู่ (ผู้ใช้เลือก 25 ก.ย. 2026): คอลัมน์ข้อมูลสินค้า (หัวน้ำเงิน) + คอลัมน์หัวข้อคุณสมบัติ
-// ที่สินค้าในหมวดนั้นใช้จริง (หัวเขียว) · สินค้า 1 แถวมีสเปคครบในแถวเดียว · หมวดกล้องไม่เห็นคอลัมน์ของ GPS
+// เทมเพลต: 1 ชีตต่อหมวด — คอลัมน์สินค้า (หัวน้ำเงิน) + หัวข้อคุณสมบัติที่หมวดนั้นใช้ (หัวเขียว)
 
 const ATTR_FILL = 'FF70AD47'
-const ID_FILL = 'FF808080' // product_id หัวเทา = ระบบใช้ ไม่ต้องกรอก (สินค้าใหม่เว้นว่าง)
+const ID_FILL = 'FF808080' // หัวเทา = ระบบใช้ สินค้าใหม่เว้นว่าง
 const GUIDE_SHEET = 'วิธีใช้'
 const NO_CATEGORY_SHEET = 'ไม่มีหมวดหมู่'
-const EXTRA_ATTR_SLOTS = 15 // คอลัมน์ว่างท้ายชีตที่มี dropdown ชื่อหัวข้อ ไว้เพิ่มหัวข้อที่หมวดนี้ยังไม่เคยใช้
+const EXTRA_ATTR_SLOTS = 15 // คอลัมน์ว่างท้ายชีตไว้เพิ่มหัวข้อใหม่
 const RESERVED_SHEETS = [GUIDE_SHEET, LIST_SHEET, SPEC_SHEET, ...SHEET_ALIASES[SPEC_SHEET]]
 
-// ชื่อชีต Excel: ≤31 ตัว ห้าม : \ / ? * [ ] — ใช้ทั้งตอนสร้างเทมเพลตและตอนเดาหมวดจากชื่อชีตตอนอ่านไฟล์
+// ชื่อชีต Excel ที่ใช้ได้ (≤ 31 ตัว ห้าม : \ / ? * [ ])
 function sheetNameFor(text) {
   return String(text || '').replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'หมวด'
 }
 
+// ใส่สี/ตัวหนา/โน้ตให้หัวคอลัมน์
 function paintHeader(cell, fill, note) {
   cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
@@ -120,6 +108,7 @@ function paintHeader(cell, fill, note) {
   if (note) cell.note = note
 }
 
+// สร้างชีตของหมวดหนึ่ง: หัวคอลัมน์ + แถวสินค้า + dropdown + ตรึงแถว/คอลัมน์
 function addCategorySheet(wb, name, { products, attrNames, snapshot, categoryName, listRefs }) {
   const sheet = wb.addWorksheet(name)
   const productCols = PRODUCT_COLUMNS.length
@@ -140,7 +129,7 @@ function addCategorySheet(wb, name, { products, attrNames, snapshot, categoryNam
     header.getCell(productCols + i + 1).value = a
     paintHeader(header.getCell(productCols + i + 1), ATTR_FILL, 'หัวข้อคุณสมบัติ — ช่องว่าง = ไม่แก้ค่าเดิม')
   })
-  // ช่องหัวคอลัมน์ว่างถัดไป: เลือกชื่อหัวข้อจาก dropdown หรือพิมพ์ใหม่ (ถามในหน้าพรีวิว)
+  // คอลัมน์หัวว่าง: เลือกชื่อหัวข้อจาก dropdown หรือพิมพ์ใหม่
   for (let i = 0; i < EXTRA_ATTR_SLOTS; i++) {
     const cell = header.getCell(productCols + attrNames.length + i + 1)
     cell.dataValidation = {
@@ -177,11 +166,12 @@ function addCategorySheet(wb, name, { products, attrNames, snapshot, categoryNam
       }
     }
   }
-  // ตรึงหัวตาราง + product_id/sku/product_name ไว้ เลื่อนไปดูคอลัมน์คุณสมบัติแล้วยังรู้ว่าแถวไหนสินค้าอะไร
+  // ตรึงหัวตาราง + 3 คอลัมน์แรก
   sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: 3 }]
   return sheet
 }
 
+// GET /template — สร้างไฟล์ .xlsx จาก DB ทุกครั้ง (มีสินค้าและสเปคปัจจุบันเติมไว้)
 router.get('/template', asyncHandler(async (_req, res) => {
   const snapshot = await loadSnapshot()
   const categoryName = (id) => snapshot.categories.find((c) => c.category_id === id)?.category_name ?? null
@@ -251,7 +241,7 @@ router.get('/template', asyncHandler(async (_req, res) => {
     attributes: `${LIST_SHEET}!$B$1:$B$${Math.max(snapshot.attributes.length, 1)}`,
   }
 
-  // หัวข้อของแต่ละกลุ่ม = หัวข้อที่สินค้าในกลุ่มมีค่า เรียงจากที่ใช้บ่อยสุด (หัวข้อหลักของหมวดอยู่ซ้าย)
+  // หัวข้อของกลุ่ม = หัวข้อที่สินค้าในกลุ่มใช้ เรียงจากใช้บ่อยสุด
   const attrsOf = (products) => {
     const count = new Map()
     for (const p of products) {
@@ -278,7 +268,6 @@ router.get('/template', asyncHandler(async (_req, res) => {
     addCategorySheet(wb, uniqueName(NO_CATEGORY_SHEET), { products: orphans, attrNames: attrsOf(orphans), snapshot, categoryName, listRefs })
   }
 
-  // เปิดไฟล์มาเจอชีตหมวดแรก (ลำดับ: วิธีใช้, _lists ซ่อน, หมวด…)
   wb.views = [{ activeTab: 2 }]
   const stamp = new Date().toISOString().slice(0, 10)
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -287,20 +276,19 @@ router.get('/template', asyncHandler(async (_req, res) => {
   res.end()
 }))
 
-// ---------- อ่านไฟล์ ----------
 
-// ค่าในเซลล์ของ exceljs มีหลายรูป (ข้อความ, ตัวเลข, วันที่, ลิงก์, rich text, สูตร)
+// ค่าเซลล์ของ exceljs (ข้อความ/ตัวเลข/วันที่/ลิงก์/rich text/สูตร) → ข้อความ
 function cellText(value) {
   if (value === null || value === undefined) return null
   if (typeof value === 'number' || typeof value === 'string') return value
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   if (Array.isArray(value.richText)) return value.richText.map((t) => t.text).join('')
-  if (value.text !== undefined) return cellText(value.text) // ลิงก์ { text, hyperlink }
-  if (value.result !== undefined) return cellText(value.result) // สูตร
+  if (value.text !== undefined) return cellText(value.text)
+  if (value.result !== undefined) return cellText(value.result)
   return String(value)
 }
 
-// หัวคอลัมน์ → { key } (ฟิลด์ที่รู้จัก รับทั้งหัวอังกฤษและหัวไทยของเทมเพลตรุ่นแรก) หรือ { attr } (อย่างอื่น = หัวข้อคุณสมบัติ)
+// หัวคอลัมน์ → { key } (ฟิลด์สินค้า อังกฤษหรือไทยรุ่นแรก) หรือ { attr } (หัวข้อคุณสมบัติ)
 function headerMap(sheet, columns, { allowAttributes }) {
   const byHeader = new Map(columns.flatMap((c) => [[normName(c.key), c.key], [normName(c.label), c.key]]))
   const map = {}
@@ -314,7 +302,7 @@ function headerMap(sheet, columns, { allowAttributes }) {
   return map
 }
 
-// ชีตสินค้า (ชีตหมวดหมู่ / products เดิม) → แถวสินค้า + ค่าคุณสมบัติจากคอลัมน์ที่ไม่ใช่ฟิลด์สินค้า
+// อ่านชีตสินค้า → แถวสินค้า + ค่าคุณสมบัติจากคอลัมน์ที่ไม่ใช่ฟิลด์สินค้า
 function readProductSheet(sheet, defaultCategory, out) {
   const map = headerMap(sheet, PRODUCT_COLUMNS, { allowAttributes: true })
   sheet.eachRow((row, rowNumber) => {
@@ -330,7 +318,7 @@ function readProductSheet(sheet, defaultCategory, out) {
       if (target.key) product[target.key] = v
       else attrs.push({ attribute_name: target.attr, value: v })
     })
-    if (Object.keys(product).length === 1 && attrs.length === 0) return // แถวว่าง
+    if (Object.keys(product).length === 1 && attrs.length === 0) return
     if (!product.product_id && !product.category_name && defaultCategory) product.category_name = defaultCategory
     out.products.push(product)
     for (const a of attrs) {
@@ -339,7 +327,7 @@ function readProductSheet(sheet, defaultCategory, out) {
   })
 }
 
-// ชีต specs ของเทมเพลตรุ่นก่อน (1 แถวต่อ 1 ค่า) — ยังรับอยู่
+// อ่านชีต specs ของเทมเพลตรุ่นก่อน (1 แถวต่อ 1 ค่า)
 function readSpecSheet(sheet, out) {
   const map = headerMap(sheet, SPEC_COLUMNS, { allowAttributes: false })
   sheet.eachRow((row, rowNumber) => {
@@ -354,6 +342,7 @@ function readSpecSheet(sheet, out) {
   })
 }
 
+// อ่านทุกชีตที่ไม่ซ่อน — ชื่อชีตตรงหมวดไหนใช้หมวดนั้นเป็นค่าเริ่มต้น
 function readWorkbook(wb, categories) {
   const out = { products: [], specs: [] }
   const categoryBySheet = new Map(categories.map((c) => [normName(sheetNameFor(c.category_name)), c.category_name]))
@@ -368,7 +357,7 @@ function readWorkbook(wb, categories) {
   return out
 }
 
-// body จาก /plan และ /commit — รับเฉพาะฟิลด์ที่รู้จัก ป้องกันของแปลกปนมา
+// แถวจาก body ของ /plan, /commit — รับเฉพาะฟิลด์ที่รู้จัก
 function rowsFromBody(body) {
   const label = (v) => String(v ?? '').slice(0, 200)
   const products = (Array.isArray(body?.rows?.products) ? body.rows.products : []).slice(0, MAX_ROWS).map((r) => {
@@ -385,6 +374,7 @@ function rowsFromBody(body) {
   return { products, specs }
 }
 
+// POST /parse — อ่านไฟล์ → { rows, plan } ยังไม่เขียน DB
 router.post('/parse', (req, res, next) => {
   upload.single('file')(req, res, async (err) => {
     try {
@@ -412,23 +402,24 @@ router.post('/parse', (req, res, next) => {
   })
 })
 
+// POST /plan — คำนวณแผนใหม่หลังแอดมินเลือกหัวข้อ
 router.post('/plan', asyncHandler(async (req, res) => {
   const rows = rowsFromBody(req.body)
   res.json({ plan: buildPlan(rows, await attachImageChecks(rows, await loadSnapshot()), req.body?.attribute_map) })
 }))
 
-// ---------- บันทึก ----------
 
+// ชื่อ → slug ภาษาอังกฤษ
 function slugify(text) {
   return String(text || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+// POST /commit — ดาวน์โหลดรูป แล้วคำนวณแผนซ้ำและเขียนใน transaction เดียว
 router.post('/commit', asyncHandler(async (req, res) => {
   const rows = rowsFromBody(req.body)
   const attributeMap = req.body?.attribute_map
 
-  // ดาวน์โหลดรูปก่อนเปิด transaction (ไม่ถือ transaction ค้างระหว่างรอเน็ต)
-  // ถ้าบันทึกไม่สำเร็จจะลบไฟล์ที่โหลดมาทิ้งให้หมด ไม่ให้มีไฟล์กำพร้าค้างในโฟลเดอร์
+  // ดาวน์โหลดรูปก่อนเปิด transaction · บันทึกล้มแล้วลบไฟล์ที่โหลดมาทิ้ง
   const preSnapshot = await attachImageChecks(rows, await loadSnapshot())
   const pre = buildPlan(rows, preSnapshot, attributeMap)
   if (!pre.ready) {
@@ -456,8 +447,7 @@ router.post('/commit', asyncHandler(async (req, res) => {
   let result
   try {
     result = await prisma.$transaction(async (tx) => {
-      // คำนวณแผนใหม่ในธุรกรรมเดียวกับที่เขียน — ข้อมูลเปลี่ยนระหว่างดูพรีวิวก็ยังตรวจถูก
-      // (ผลตรวจรูปใช้ของรอบก่อนหน้า ไม่โหลดซ้ำ)
+      // คำนวณแผนใหม่ใน transaction เดียวกับที่เขียน — ข้อมูลเปลี่ยนระหว่างดูพรีวิวก็ยังตรวจถูก
       const snapshot = await loadSnapshot(tx)
       snapshot.imageChecks = new Map([...preSnapshot.imageChecks, ...imageChecks])
       const plan = buildPlan(rows, snapshot, attributeMap)
@@ -483,10 +473,10 @@ router.post('/commit', asyncHandler(async (req, res) => {
   })
 }))
 
-// เขียนแผนที่ตรวจผ่านแล้วลง DB (เรียกภายใน $transaction เท่านั้น)
+// เขียนแผนลง DB (เรียกใน $transaction เท่านั้น)
 async function writePlan(tx, plan, localByUrl) {
   {
-    // หัวข้อสเปคใหม่ที่แอดมินกดยืนยันให้สร้าง — สร้างชื่อละครั้งเดียว
+    // หัวข้อใหม่ที่แอดมินยืนยันให้สร้าง — ชื่อละครั้งเดียว
     const createdAttr = new Map()
     for (const spec of plan.specs) {
       if (!spec.new_attribute || !['create', 'update'].includes(spec.action)) continue
@@ -496,7 +486,7 @@ async function writePlan(tx, plan, localByUrl) {
       createdAttr.set(key, row.attribute_code)
     }
 
-    // รหัส/slug ของสินค้าใหม่ — ไล่เลขต่อจากตัวมากสุด และจำ slug ที่ใช้ไปในรอบนี้ด้วย
+    // รหัส/slug ของสินค้าใหม่ — ไล่เลขต่อจากตัวมากสุด ไม่ให้ slug ซ้ำในรอบเดียวกัน
     let maxCode = 0
     const usedSlugs = new Set()
     for (const p of await tx.tbl_item.findMany({ select: { itm_code: true, slug: true } })) {
@@ -523,7 +513,7 @@ async function writePlan(tx, plan, localByUrl) {
       ...(v.tiktok_link !== undefined ? { itm_tiktok_end_point: v.tiktok_link } : {}),
       ...(v.line_link !== undefined ? { itm_line_end_point: v.line_link } : {}),
       ...(v.description !== undefined ? { itm_information: v.description } : {}),
-      // ลิงก์ภายนอกถูกแทนด้วย path ของไฟล์ที่ดาวน์โหลดมาแล้ว — ไม่เก็บ URL เว็บอื่นลง DB
+      // ลิงก์ภายนอกถูกแทนด้วย path ไฟล์ที่ดาวน์โหลดแล้ว
       ...(v.product_image !== undefined ? { itm_image_master: localByUrl.get(v.product_image) ?? v.product_image } : {}),
     })
 
@@ -551,7 +541,7 @@ async function writePlan(tx, plan, localByUrl) {
       } else if (p.action === 'update') {
         const data = { ...columnsOf(p.values), mdf_dt: new Date() }
         if (p.values.product_price !== undefined) {
-          // ช่วงราคาบนการ์ดคิดจากราคาสินค้า + ส่วนเพิ่มของโมเดล (กติกาเดียวกับ PUT /admin/products)
+          // ช่วงราคาการ์ด = ราคาสินค้า + ส่วนเพิ่มของโมเดล (กติกาเดียวกับ PUT /admin/products)
           const item = await tx.tbl_item.findUnique({ where: { itm_code: p.product_id } })
           const codes = (item.itm_model_code || '').split(',').map((c) => c.trim()).filter(Boolean)
           const models = codes.length ? await tx.tbl_item_model.findMany({ where: { itm_model_code: { in: codes } } }) : []

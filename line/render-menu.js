@@ -1,4 +1,4 @@
-// ถ่ายภาพ rich menu จาก rich-menu.html ให้ได้ 2500 x 1686 พอดี (กว้าง 500px x zoom 2.5 x deviceScaleFactor 2 = 1250 x 843 จุดเต็ม)
+// ถ่ายรูป rich menu จาก rich-menu.html เป็นไฟล์ 2500 x 1686
 import { chromium } from 'playwright';
 import path from 'path';
 
@@ -22,7 +22,7 @@ await p.addStyleTag({ content: `
 for (const tab of ['gps', 'shop']) {
   await p.evaluate((t) => document.querySelector(`[data-tab=${t}]`).click(), tab);
   await p.mouse.move(0, 0);
-  // ตัดภาพตามกรอบเมนูเอง — ขอบบนของ .rich อยู่ที่พิกัดทศนิยม ถ่ายทั้ง element แล้วติดเส้นดำของหน้าจอมาด้วย
+  // ตัดภาพตามกรอบเมนูเอง — ถ่ายทั้ง element แล้วติดเส้นขอบหน้าจอมาด้วย
   const box = await p.locator('#rich').boundingBox();
   const clip = { x: Math.ceil(box.x), y: Math.ceil(box.y), width: 1250, height: 843 };
   await p.screenshot({ path: path.join(dir, `menu-${tab}.jpg`), type: 'jpeg', quality: 90, clip });

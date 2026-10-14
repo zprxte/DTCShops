@@ -1,15 +1,16 @@
+// ตะกร้าเปรียบเทียบ (ช่อง = สินค้า + โมเดล) จำใน localStorage · ขนาดตาราง 2/3/4 ช่อง เพดาน 4
 import { defineStore } from 'pinia'
 import { toast } from './toast'
 import { useLanguage } from '../language/useLanguage'
 
-// เพดานแข็งของระบบ — ตารางเปรียบเทียบกว้างสุดได้ 4 ช่อง
+// เพดานของระบบ
 const MAX_COMPARE = 4
-// ขนาดตารางที่ผู้ใช้เลือกได้ (คำขออาจารย์ 14 ก.ย. 2026) — จำนวนช่องของตาราง
-// เปรียบเทียบไม่ใช่ 4 ตายตัวอีกต่อไป ผู้ใช้กำหนดเองได้ว่าจะเทียบกี่ชิ้น
+// ขนาดตารางที่ผู้ใช้เลือกได้
 export const COMPARE_SIZES = [2, 3, 4] as const
 export const DEFAULT_COMPARE_SIZE = 4
 const STORAGE_KEY = 'compare-storage'
 
+// บังคับขนาดตารางให้อยู่ในช่วง 2–4
 function clampSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_COMPARE_SIZE
   return Math.min(MAX_COMPARE, Math.max(COMPARE_SIZES[0], Math.round(size)))
@@ -20,34 +21,27 @@ export interface CompareProduct {
   product_name: string
   product_image?: string
   product_price: number
-  // Added 2026-08-27 — which model this compare slot is pinned to
-  // (see [[product-model-group]]). undefined/null means "no specific
-  // model chosen" (shows the product's own/starting price). Lets the SAME
-  // product appear as two different compare columns at once, one per model,
-  // which product_id alone couldn't distinguish before this.
+  // โมเดลที่ช่องนี้เลือก (null = ไม่ระบุ) — สินค้าเดียวกันอยู่ได้หลายช่องคนละโมเดล
   model_id?: string | null
 }
 
-// Two slots are "the same slot" only if both product_id AND model_id
-// match — undefined and null are treated as equivalent ("no model chosen"),
-// since callers use either interchangeably (component state tends to use
-// null, API/store defaults tend to use undefined).
+// ช่องเดียวกัน = สินค้าและโมเดลตรงกัน (undefined กับ null ถือว่าเท่ากัน)
 function sameSlot(a: { product_id: string; model_id?: string | null }, b: { product_id: string; model_id?: string | null }) {
   return a.product_id === b.product_id && (a.model_id ?? null) === (b.model_id ?? null)
 }
 
-// Stable key for a compare slot, for use as a Vue :key or map key — see
-// sameSlot() above for the equivalence this must mirror.
+// key ของช่อง ใช้เป็น :key ของ Vue
 export function compareItemKey(item: { product_id: string; model_id?: string | null }) {
   return `${item.product_id}:${item.model_id ?? 'base'}`
 }
 
+// โหลดตะกร้าที่บันทึกไว้
 function loadPersisted(): { items: CompareProduct[]; capacity: number } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { items: [], capacity: DEFAULT_COMPARE_SIZE }
     const parsed = JSON.parse(raw)
-    // ข้อมูลเก่าที่บันทึกไว้ก่อนมีฟีเจอร์เลือกขนาดตารางจะไม่มี capacity — ถือเป็น 4 ช่องตามเดิม
+    // ข้อมูลเก่าที่ยังไม่มี capacity = 4 ช่อง
     const capacity = clampSize(Number(parsed.capacity ?? DEFAULT_COMPARE_SIZE))
     const items: CompareProduct[] = parsed.items ?? []
     return { items: items.slice(0, capacity), capacity }
@@ -61,19 +55,18 @@ export const useCompareStore = defineStore('compare', {
     const persisted = loadPersisted()
     return {
       items: persisted.items as CompareProduct[],
-      //จำนวนช่องของตารางเปรียบเทียบที่ผู้ใช้เลือกไว้ (2–4) จำค่าข้ามการเข้าเว็บครั้งถัดไป
+      // จำนวนช่องที่ผู้ใช้เลือก (2–4)
       capacity: persisted.capacity,
     }
   },
 
   actions: {
+    // บันทึกลง localStorage
     persist() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ items: this.items, capacity: this.capacity }))
     },
 
-    // เปลี่ยนขนาดตารางเปรียบเทียบ (2/3/4 ช่อง) — ถ้าย่อลงจนช่องไม่พอ จะตัดสินค้า
-    // "ท้ายรายการ" ทิ้งให้เหลือเท่าขนาดใหม่ ผู้เรียกต้องถามยืนยันผู้ใช้ก่อนเอง
-    // (ComparePage ถามผ่านป็อปอัปยืนยัน) เพราะที่นี่ไม่ควรมี UI
+    // เปลี่ยนขนาดตาราง — ย่อแล้วตัดสินค้าท้ายรายการทิ้ง (ผู้เรียกต้องถามยืนยันเอง)
     setCapacity(size: number) {
       const next = clampSize(size)
       this.capacity = next
@@ -81,18 +74,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
-    // Rejects an exact duplicate slot (same product AND same model already
-    // present) instead of silently wasting one of the 4 slots on it — added
-    // 2026-08-27 alongside per-model compare slots, since addItem() no
-    // longer implicitly can't collide just by product_id.
-    // `grow` = ตารางเต็มแล้วให้ "ขยายขนาดตารางเอง" ได้ไหม (ไม่เกินเพดาน 4)
-    //
-    // เปิดเป็นค่าเริ่มต้นเพราะผู้ใช้ที่กดปุ่มเปรียบเทียบจากหน้าแรก/หน้าสินค้ามองไม่เห็น
-    // ตัวเลือกขนาดตาราง การขึ้น "เปรียบเทียบได้สูงสุด 2 สินค้า" ตรงนั้นจึงเป็นการปฏิเสธ
-    // ด้วยกติกาที่เขาไม่รู้ว่ามีอยู่ และไม่มีทางแก้จากหน้าที่ยืนอยู่
-    //
-    // ฝั่งหน้าเปรียบเทียบส่ง grow: false เพราะตัวเลือกขนาดตารางอยู่ตรงหน้าต่อรอง —
-    // ที่นั่นขนาดคือสิ่งที่ผู้ใช้เพิ่งเลือกเอง ระบบไม่ควรไปเปลี่ยนให้เอง
+    // เพิ่มช่อง (ซ้ำเป๊ะ = ปฏิเสธ) · grow = ตารางเต็มให้ขยายเองถึง 4 (หน้าเปรียบเทียบส่ง false เพราะผู้ใช้เพิ่งเลือกขนาดเอง)
     addItem(product: CompareProduct, { grow = true }: { grow?: boolean } = {}) {
       const { langs } = useLanguage()
       if (this.items.some((i) => sameSlot(i, product))) {
@@ -101,7 +83,6 @@ export const useCompareStore = defineStore('compare', {
       }
       let grew = false
       if (this.items.length >= this.capacity) {
-        // เพดาน 4 ยังเป็นเพดานจริงเสมอ grow ขยายได้แค่ถึงเพดาน ไม่ทะลุ
         if (!grow || this.capacity >= MAX_COMPARE) {
           toast.error(langs('compareMaxReached', { n: this.capacity }))
           return
@@ -111,23 +92,17 @@ export const useCompareStore = defineStore('compare', {
       }
       this.items.push(product)
       this.persist()
-      // ขยายให้แล้วต้องบอก ไม่งั้นผู้ใช้เปิดหน้าเปรียบเทียบมาเจอตารางกว้างกว่าที่ตั้งไว้
-      // โดยไม่รู้ว่าเกิดจากอะไร
+      // ขยายให้แล้วต้องบอกผู้ใช้
       toast.success(grew ? langs('compareSizeGrown', { n: this.capacity }) : langs('compareItemAdded'))
     },
 
-    // Removes every slot for this product, regardless of model — for callers
-    // (ProductCard, ProductDetailPage's generic toggle) that only know the
-    // product_id and mean "take this product out of comparison entirely."
+    // เอาสินค้าออกทุกช่อง ไม่สนโมเดล
     removeItem(product_id: string) {
       this.items = this.items.filter((i) => i.product_id !== product_id)
       this.persist()
     },
 
-    // Removes exactly one slot (product + model) — for callers that know
-    // precisely which slot they mean, like ComparePage's per-column "X"
-    // button or a model-aware toggle, where two slots can share a
-    // product_id and only one should go.
+    // เอาออกเฉพาะช่องที่ตรงทั้งสินค้าและโมเดล
     removeItemExact(product_id: string, model_id?: string | null) {
       const index = this.items.findIndex((i) => sameSlot(i, { product_id, model_id }))
       if (index === -1) return
@@ -135,8 +110,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
-    // ใช้ตอนกู้รายการจากลิงก์แชร์ — ลิงก์ที่มีสินค้ามากกว่าขนาดตารางที่ตั้งไว้
-    // ให้ "ขยาย" ตารางตามลิงก์ (ไม่เกิน 4) แทนที่จะตัดสินค้าของลิงก์ทิ้งเงียบๆ
+    // ตั้งรายการจากลิงก์แชร์ — มากกว่าขนาดตารางให้ขยายตาม (ไม่เกิน 4)
     setItems(items: CompareProduct[]) {
       const trimmed = items.slice(0, MAX_COMPARE)
       if (trimmed.length > this.capacity) this.capacity = clampSize(trimmed.length)
@@ -144,13 +118,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
-    // Swaps one slot out for another in place — added 27 ส.ค. 2026 for the
-    // compare table's "เปลี่ยนสินค้า" feature. Unlike removeItem()+addItem(),
-    // this keeps the replacement in the SAME column position instead of
-    // bumping it to the end, since the whole point is "I want a different
-    // product right here, not a different comparison order." Matches by
-    // exact slot (product + model) now that a product can occupy more than
-    // one column.
+    // แทนที่ช่องเดิมในตำแหน่งเดิม (ปุ่ม "เปลี่ยนสินค้า")
     replaceItem(oldProductId: string, oldModelId: string | null | undefined, newProduct: CompareProduct) {
       const index = this.items.findIndex((i) => sameSlot(i, { product_id: oldProductId, model_id: oldModelId }))
       if (index === -1) return
@@ -158,11 +126,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
-    // Changes just the model pinned to an existing slot, keeping its column
-    // position — the compare table's per-column model <select>, now that a
-    // slot's model is part of the store rather than transient component
-    // state (so two columns of the same product don't fight over one
-    // Record<product_id, model_id> entry).
+    // เปลี่ยนโมเดลของช่องเดิม คงตำแหน่ง
     setItemModel(product_id: string, oldModelId: string | null | undefined, newModelId: string, price: number) {
       const index = this.items.findIndex((i) => sameSlot(i, { product_id, model_id: oldModelId }))
       if (index === -1) return
@@ -170,11 +134,7 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
-    // สลับโมเดลกันระหว่าง 2 ช่องของ "สินค้าตัวเดียวกัน" — ใช้ตอนผู้ใช้เลือกโมเดล
-    // ที่อีกคอลัมน์ถืออยู่แล้ว: แทนที่จะปล่อยให้เกิด 2 คอลัมน์เหมือนกันเป๊ะ
-    // (สินค้าเดียวกัน + โมเดลเดียวกัน) ให้อีกคอลัมน์รับโมเดลเดิมของคอลัมน์นี้ไปแทน
-    // หาตำแหน่งทั้งคู่ให้ครบก่อนแล้วค่อยเขียน เพราะถ้าทยอยเขียนทีละช่องจะมีจังหวะที่
-    // ทั้งสองช่องถือโมเดลเดียวกัน ทำให้ค้นหาช่องที่สองเจอผิดตัว
+    // สลับโมเดลระหว่าง 2 ช่องของสินค้าเดียวกัน (เลือกโมเดลที่อีกช่องถืออยู่) — หาตำแหน่งทั้งคู่ก่อนค่อยเขียน
     swapItemModels(
       product_id: string,
       modelIdA: string | null | undefined,
@@ -190,21 +150,18 @@ export const useCompareStore = defineStore('compare', {
       this.persist()
     },
 
+    // ล้างตะกร้า
     clearAll() {
       this.items = []
       this.persist()
     },
 
-    // "Is this product in compare at all, any model?" — for generic
-    // add/remove buttons (ProductCard, ProductDetailPage) that don't track
-    // which specific model.
+    // สินค้านี้อยู่ในตะกร้าไหม (โมเดลใดก็ได้)
     isInCompare(product_id: string) {
       return this.items.some((i) => i.product_id === product_id)
     },
 
-    // "Is this EXACT product+model combination already a slot?" — for the
-    // compare-page picker's model-choice step, where re-adding the same
-    // product with a DIFFERENT model should be allowed.
+    // สินค้า + โมเดลนี้อยู่ในตะกร้าแล้วไหม
     isExactInCompare(product_id: string, model_id?: string | null) {
       return this.items.some((i) => sameSlot(i, { product_id, model_id }))
     },

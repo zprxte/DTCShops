@@ -40,3 +40,9 @@ frontend/scroll-after.png
 docs/
 database/banner/
 CHANGELOG.md
+
+# เทสต์อัตโนมัติ — เก็บไว้ในเครื่องเท่านั้น ไม่ขึ้น GitHub (ผู้ใช้สั่ง 13 ต.ค. 2026)
+backend/test/
+e2e/
+line/test/
+mobile/test/

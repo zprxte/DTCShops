@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// หน้าแรก: แบนเนอร์ (วนได้ + เลื่อนเอง) → หมวดหมู่ → สินค้าแนะนำ (ยอดนิยม 12 อันดับ) → แผนที่ + การ์ดสาขา
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { LayoutGrid, ChevronLeft, ChevronRight, MapPin, Phone } from 'lucide-vue-next'
@@ -14,18 +15,14 @@ import SkeletonBox from '../../components/common/SkeletonBox.vue'
 import type { BannerSlide, ProductCardData, ShopBranch } from '../../types/product'
 import { useLanguage } from '../../language/useLanguage'
 
-// Leaflet โหลดแบบ dynamic import (Week 15 — code splitting): ตัวไลบรารีหนัก
-// ~140 kB แต่ใช้แค่แผนที่สาขาซึ่งอยู่ล่างสุดของหน้าแรก — ถ้า import ตรงๆ ทุกคน
-// ที่เปิดหน้าแรกต้องดาวน์โหลดมันก่อนถึงจะเห็นอะไรเลย ตอนนี้โหลดตอนจะวาดแผนที่จริง
+// Leaflet หนัก ~140 kB — โหลดแบบ dynamic import ตอนจะวาดแผนที่เท่านั้น
 let L: typeof LeafletTypes | null = null
 
+// โหลด Leaflet ครั้งแรกที่ต้องใช้
 async function loadLeaflet() {
   if (L) return L
   L = await import('leaflet')
-  // Vite doesn't run Leaflet's own CSS-relative asset resolution for its
-  // default marker icon (a well-known Leaflet+bundler gotcha — without this,
-  // every marker on the map below renders as a broken image) — point it at
-  // the actual hashed asset URLs Vite produces for these three PNGs instead.
+  // Vite ไม่ resolve รูปหมุดของ Leaflet ให้ ต้องชี้ URL เอง ไม่งั้นหมุดเป็นรูปพัง
   delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl
   L.Icon.Default.mergeOptions({
     iconUrl: markerIconUrl,
@@ -48,24 +45,19 @@ const router = useRouter()
 const { langs } = useLanguage()
 
 const categories = ref<CategoryWithImage[]>([])
-// แยก flag ของหมวดหมู่ต่างหากจาก loading ของ "สินค้าแนะนำ" — สอง endpoint นี้
-// โหลดคู่ขนานกัน ใครเสร็จก่อนก็แสดงส่วนของตัวเองได้เลย ไม่ต้องรอกัน
+// หมวดหมู่กับสินค้าแนะนำโหลดคู่ขนาน ใครเสร็จก่อนแสดงก่อน
 const categoriesLoading = ref(true)
-//ข้อมูลแบนเนอร์
 const banners = ref<BannerSlide[]>([])
-//อนิเมชันของแบนเนอร์
 const BANNER_SLIDE_TRANSITION = 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)'
-//ตำแหน่งของแบนเนอร์
 const trackIndex = ref(0)
-//เปิดปิดอนิเมชัน
 const trackTransitionEnabled = ref(true)
-//กันกดรัวๆ
+// กันกดรัว
 const isSliding = ref(false)
 const displaySlides = computed<BannerSlide[]>(() => {
   const list = banners.value
   return list.length > 1 ? [list[list.length - 1], ...list, list[0]] : list
 })
-// ตำแหน่งสไลด์จริง (0..length-1) คำนวณย้อนกลับจาก trackIndex
+// ตำแหน่งสไลด์จริง คำนวณจาก trackIndex (track มีโคลนหัว/ท้ายไว้วนต่อเนื่อง)
 const bannerIndex = computed(() => {
   const length = banners.value.length
   if (length <= 1) return 0
@@ -73,10 +65,10 @@ const bannerIndex = computed(() => {
   if (trackIndex.value === length + 1) return 0
   return trackIndex.value - 1
 })
-//อัตราส่วนของกรอบแบนเนอร์
+// สัดส่วนกรอบแบนเนอร์ (เฉลี่ยจากรูปจริง)
 const DEFAULT_BANNER_RATIO = 21 / 9
 const bannerFrameRatio = ref(DEFAULT_BANNER_RATIO)
-//โหลดรูปภาพแบนเนอร์
+// อ่านสัดส่วนกว้าง/สูงของรูป
 function loadImageRatio(src: string): Promise<number | null> {
   return new Promise((resolve) => {
     const img = new Image()
@@ -85,6 +77,7 @@ function loadImageRatio(src: string): Promise<number | null> {
     img.src = src
   })
 }
+// สัดส่วนเฉลี่ยของรูปแบนเนอร์ทั้งหมด
 async function computeAverageBannerRatio(list: BannerSlide[]) {
   const urls = list.map((b) => resolveImageUrl(b.image)).filter((u): u is string => !!u)
   if (urls.length === 0) return
@@ -93,8 +86,7 @@ async function computeAverageBannerRatio(list: BannerSlide[]) {
   bannerFrameRatio.value = ratios.reduce((sum, r) => sum + r, 0) / ratios.length
 }
 
-// เลื่อนไปสไลด์จริงตำแหน่ง i (0..length-1) แบบกระโดดตรงๆ — ใช้กับจุดไล่
-// ตำแหน่ง ซึ่งไม่ต้องการการันตีทิศทางต่อเนื่องเหมือนปุ่มลูกศร
+// กระโดดไปสไลด์ i (ใช้กับจุดบอกตำแหน่ง)
 function scrollToBannerSlide(i: number) {
   if (isSliding.value || i + 1 === trackIndex.value) return
   ensureTrackIndexInRange()
@@ -103,14 +95,13 @@ function scrollToBannerSlide(i: number) {
   trackIndex.value = i + 1
 }
 
-// ผู้ใช้กดเลือกสไลด์เอง (ปุ่มลูกศร/จุด) — เลื่อนแล้วรีเซ็ตนาฬิกา auto banner
-// ใหม่ กันเลื่อนสไลด์ถัดไปทันทีซ้อนกับที่เพิ่งกดไป
+// ผู้ใช้เลือกสไลด์เอง — เลื่อนแล้วรีเซ็ตนาฬิกาเลื่อนอัตโนมัติ
 function scrollToBannerSlideManual(i: number) {
   scrollToBannerSlide(i)
   restartBannerAutoplay()
 }
 
-// เพื่อดึง trackIndex กลับเข้าตำแหน่งสไลด์แรก (real index 0) แบบไม่มีอนิเมชันก่อนเสมอ
+// ดึง trackIndex กลับเข้าช่วงสไลด์จริงแบบไม่มีอนิเมชัน
 function ensureTrackIndexInRange() {
   const length = banners.value.length
   const max = length > 1 ? length + 1 : 0
@@ -121,6 +112,7 @@ function ensureTrackIndexInRange() {
   }
 }
 
+// เลื่อนแบนเนอร์ซ้าย/ขวา 1 สไลด์
 function scrollBannerByCards(direction: 1 | -1) {
   if (banners.value.length <= 1 || isSliding.value) return
   ensureTrackIndexInRange()
@@ -129,25 +121,19 @@ function scrollBannerByCards(direction: 1 | -1) {
   trackIndex.value += direction
 }
 
+// เลื่อนแบนเนอร์ด้วยปุ่มลูกศร (รีเซ็ตนาฬิกาด้วย)
 function scrollBannerByCardsManual(direction: 1 | -1) {
   scrollBannerByCards(direction)
   restartBannerAutoplay()
 }
 
-// track เลื่อนไปจบที่ "โคลน" หัว/ท้ายแล้ว (transitionend ยิงเฉพาะตอนอนิเมชัน
-// จบจริง ไม่ใช่ตอน trackIndex ถูกตั้งค่าตรงๆ) — สลับกลับไปสไลด์จริงตำแหน่ง
-// เดียวกันทันทีโดยปิด transition ไว้ 1 เฟรม ผู้ใช้จะไม่เห็นการกระโดดนี้เลย
-// เพราะภาพที่โคลนกับภาพจริงตำแหน่งเดียวกันหน้าตาเหมือนกันทุกประการ — ทำให้
-// กดปุ่มทิศทางเดิมต่อได้เรื่อยๆ โดยไม่มีวันโดนดีดย้อนทิศกลับ
+// จบที่สไลด์โคลนแล้วสลับไปสไลด์จริงตำแหน่งเดียวกันโดยไม่มีอนิเมชัน — กดทิศเดิมต่อได้ไม่สิ้นสุด
 function handleTrackTransitionEnd() {
   const length = banners.value.length
   if (length > 1 && (trackIndex.value === 0 || trackIndex.value === length + 1)) {
     trackTransitionEnabled.value = false
     trackIndex.value = trackIndex.value === 0 ? length : 1
-    // ค้าง isSliding ไว้จนกว่าเฟรม "สลับกลับ" (ไม่มีอนิเมชัน) จะถูกวาดจริง
-    // ก่อนปลดล็อกปุ่ม — กันคลิกรัวๆ ตรงจังหวะนี้พอดีมาสั่งเลื่อนซ้อนก่อนที่
-    // transition จะถูกเปิดกลับ ซึ่งจะทำให้เฟรมสลับกลับกลายเป็นเห็นอนิเมชัน
-    // เป็นภาพกระตุกแทนที่จะมองไม่เห็นเหมือนตั้งใจไว้
+    // ล็อกปุ่มไว้จนเฟรมสลับกลับถูกวาดจริง ไม่งั้นคลิกรัวจะเห็นภาพกระตุก
     requestAnimationFrame(() => requestAnimationFrame(() => {
       trackTransitionEnabled.value = true
       isSliding.value = false
@@ -157,9 +143,7 @@ function handleTrackTransitionEnd() {
   }
 }
 
-// Auto banner — เลื่อนสไลด์เองทุก 5 วิ, หยุดพักตอนเมาส์ชี้ (mouseenter/leave)
-// และรีเซ็ตนับใหม่ทุกครั้งที่ผู้ใช้สั่งเลื่อนเอง (ปุ่มลูกศร/จุด/สไลด์มือ) กัน
-// สลับสไลด์ซ้อนกันขณะผู้ใช้กำลังโต้ตอบอยู่
+// เลื่อนแบนเนอร์เองทุก 5 วิ หยุดตอนเมาส์ชี้ รีเซ็ตเมื่อผู้ใช้เลื่อนเอง
 const BANNER_AUTOPLAY_MS = 5000
 let bannerAutoplayTimer: ReturnType<typeof setInterval> | null = null
 function stopBannerAutoplay() {
@@ -178,9 +162,7 @@ function restartBannerAutoplay() {
 }
 onUnmounted(stopBannerAutoplay)
 
-// สลับตารางแบนเนอร์จริงของ dtcshops.com บางแถวมีชื่อไฟล์รูปอ้างอิงไม่ตรงกับที่
-// อัปโหลดจริงอยู่แล้ว (404 จาก CDN) — ตัดออกจากรายการทันทีที่โหลดรูปไม่สำเร็จ
-// แทนที่จะปล่อยให้ผู้ใช้เห็นไอคอนรูปพัง
+// ไฟล์รูปบางแถวใน DB ไม่มีจริง (404) — ตัดแบนเนอร์นั้นออก
 function handleBannerImageError(bannerId: string) {
   const i = banners.value.findIndex((b) => b.banner_id === bannerId)
   if (i === -1) return
@@ -196,11 +178,13 @@ const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const activeIndex = ref(0)
 
+// ระยะเลื่อน 1 การ์ดของรางสินค้าแนะนำ
 function cardStep(el: HTMLElement) {
   const card = el.firstElementChild as HTMLElement | null
   return (card?.offsetWidth ?? el.clientWidth / 4) + 16
 }
 
+// อัปเดตจุดบอกตำแหน่งตามการเลื่อน
 function updateScrollState() {
   const el = scrollTrack.value
   if (!el) return
@@ -211,6 +195,7 @@ function updateScrollState() {
     : products.value.length - 1
 }
 
+// เลื่อนรางสินค้าทีละการ์ด (สุดขอบแล้ววนไปอีกด้าน)
 function scrollByCards(direction: 1 | -1) {
   const el = scrollTrack.value
   if (!el) return
@@ -234,16 +219,16 @@ function scrollToIndex(i: number) {
 const numDots = computed(() => Math.max(1, products.value.length - 5))
 const activeDot = computed(() => Math.min(activeIndex.value, numDots.value - 1))
 
-// ===== DTC Shop & Services — branch map + shop card carousel =====
 const shops = ref<ShopBranch[]>([])
 const mapEl = ref<HTMLElement | null>(null)
 let leafletMap: LeafletTypes.Map | null = null
 const shopMarkers = new Map<string, LeafletTypes.Marker>()
 
+// วาดแผนที่สาขา + หมุด + popup
 async function initShopMap() {
   if (!mapEl.value || shops.value.length === 0) return
   const L = await loadLeaflet()
-  // เผื่อผู้ใช้เปลี่ยนหน้าไปแล้วระหว่างรอไลบรารีโหลด
+  // ผู้ใช้อาจเปลี่ยนหน้าไปแล้วระหว่างรอโหลดไลบรารี
   if (!mapEl.value) return
   leafletMap = L.map(mapEl.value, { scrollWheelZoom: false })
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -257,18 +242,12 @@ async function initShopMap() {
   for (const s of shops.value) {
     const marker = L.marker([s.lat, s.lon]).addTo(leafletMap)
     marker.bindPopup(`<strong>${s.shop_name}</strong><br/>${s.address}`)
-    // เดิม scroll การ์ดในแคโรเซลไปหาสาขานี้ทุกครั้งที่กด — ตัดออกตามคำขอ
-    // ผู้ใช้ (4 ก.ย. 2026), คลิกหมุดแค่เปิด popup อย่างเดียวไม่ต้องขยับ
-    // ตำแหน่ง scroll ของแคโรเซลด้านล่างเลย
     shopMarkers.set(s.shop_id, marker)
   }
 }
 onUnmounted(() => { leafletMap?.remove() })
 
-// Shop-card carousel — separate ref set from the featured-products one
-// above (same pattern this file already uses: two independent rails, not a
-// shared composable) but mirrors its behavior exactly: wraparound arrows
-// (jump to the opposite end instead of disabling) + dot indicators below.
+// รางการ์ดสาขา — ทำงานแบบเดียวกับรางสินค้าแนะนำ (ลูกศรวน + จุด)
 const shopTrack = ref<HTMLElement | null>(null)
 const shopCanScrollLeft = ref(false)
 const shopCanScrollRight = ref(false)
@@ -305,22 +284,19 @@ function scrollToShopIndex(i: number) {
   if (!el) return
   el.scrollTo({ left: shopCardStep(el) * i, behavior: 'smooth' })
 }
-// กดการ์ดสาขาแล้วบินไปตำแหน่งบนแผนที่ + เปิด popup เฉยๆ
+// กดการ์ดสาขาแล้วบินไปตำแหน่งบนแผนที่ + เปิด popup
 function focusShopOnMap(s: ShopBranch) {
   if (!leafletMap) return
   leafletMap.flyTo([s.lat, s.lon], 14)
   shopMarkers.get(s.shop_id)?.openPopup()
 }
 
-// Capped at 4 cards visible at once (md: w-25%, no lg/xl step beyond that
-// — unlike the featured-products rail above, which goes up to 6) — so the
-// dot count only needs to account for 3 extra positions past the first
-// full screen, not 5.
+// เห็นได้สูงสุด 4 การ์ดต่อจอ จุดจึงเผื่อไว้ 3 ตำแหน่ง
 const shopNumDots = computed(() => Math.max(1, shops.value.length - 3))
 const shopActiveDot = computed(() => Math.min(shopActiveIndex.value, shopNumDots.value - 1))
 
 onMounted(() => {
-  // สินค้าแนะนำ = 12 อันดับที่มีคนเข้าดูมากที่สุด (ยอดทั้งหมดใน tbl_logs)
+  // สินค้าแนะนำ = 12 อันดับเข้าดูมากสุด (tbl_logs)
   productAPI
     .list({ limit: 12, sort: 'popular' })
     .then((res) => {
@@ -349,8 +325,8 @@ onMounted(() => {
   }).catch(() => {})
 })
 
+// ไปหน้าสินค้าที่กรองหมวดนี้ (ย่อแผงตัวกรองไว้)
 function goToCategory(c: CategoryWithImage) {
-  // collapseFilters — ให้หน้าสินค้าย่อแผงตัวกรองไว้ เห็นสินค้าในหมวดทันที (ดู ProductsPage.vue)
   router.push({ path: '/products', query: { category_id: c.category_id }, state: { collapseFilters: true } })
 }
 </script>
@@ -393,8 +369,6 @@ function goToCategory(c: CategoryWithImage) {
         </div>
 
         <template v-if="banners.length > 1">
-          <!-- ปุ่มลูกศร — วงกลมทึบโปร่งแสงสีเข้ม + ไอคอนขาว ตาม markup จริง
-               (icon-inbg) ของ dtcshops.com -->
           <button
             type="button"
             @click="scrollBannerByCardsManual(-1)"
@@ -412,7 +386,6 @@ function goToCategory(c: CategoryWithImage) {
             <ChevronRight aria-hidden="true" class="w-5 h-5" />
           </button>
 
-          <!-- จุดไล่ตำแหน่ง (custom-delimiters/dot ในภาพอ้างอิง) -->
           <div class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
             <button
               v-for="(b, i) in banners"
@@ -428,7 +401,6 @@ function goToCategory(c: CategoryWithImage) {
       </div>
     </section>
 
-    <!-- Product Category -->
     <section v-if="categoriesLoading">
       <div class="flex items-center gap-3 mb-6 px-8">
         <span class="w-1.5 h-6 rounded-full bg-brand-500 shrink-0"></span>
@@ -473,15 +445,13 @@ function goToCategory(c: CategoryWithImage) {
       </div>
     </section>
 
-    <!-- Featured products -->
     <section>
       <div class="flex items-center gap-3 mb-6 px-8">
         <span class="w-1.5 h-6 rounded-full bg-brand-500 shrink-0"></span>
         <h2 class="text-lg md:text-xl font-bold text-brand-700">{{ langs('featuredTitle') }}</h2>
       </div>
 
-      <!-- โครงร่างการ์ดระหว่างโหลด แทนข้อความ "กำลังโหลด" เดิม — เรียงเป็นแถว
-           เท่ากับแคโรเซลจริง (สูงสุด 6 ใบต่อจอ) หน้าจึงไม่กระโดดตอนของจริงมา -->
+      <!-- โครงร่างการ์ดระหว่างโหลด เรียงเท่ารางจริง หน้าไม่กระโดด -->
       <div v-if="loading" class="px-8 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" role="status" :aria-label="langs('loadingProducts')">
         <ProductCardSkeleton v-for="n in 6" :key="n" />
       </div>
@@ -489,8 +459,6 @@ function goToCategory(c: CategoryWithImage) {
       <p v-if="!loading && !error && products.length === 0" class="text-gray-500 text-sm">{{ langs('noProducts') }}</p>
 
       <div v-if="!loading && !error && products.length > 0">
-        <!-- Arrows are centered against this rail only — kept out of the dots
-             row below so their absolute box can never sit on top of it. -->
         <div class="relative px-8">
           <button
             v-if="products.length > 1"
@@ -542,7 +510,6 @@ function goToCategory(c: CategoryWithImage) {
       </div>
     </section>
 
-    <!-- DTC Shop & Services — branch map -->
     <section v-if="shops.length > 0" class="px-8">
       <div class="flex items-center gap-3 mb-1">
         <span class="w-1.5 h-6 rounded-full bg-brand-500 shrink-0"></span>
@@ -553,9 +520,6 @@ function goToCategory(c: CategoryWithImage) {
       <div ref="mapEl" class="w-full h-[320px] md:h-[420px] rounded-2xl overflow-hidden border z-0"></div>
 
       <div class="mt-6">
-        <!-- Same rail shape as the "สินค้าแนะนำ" carousel above: arrows
-             centered against the rail only, wraparound instead of disabled,
-             dot row underneath. -->
         <div class="relative">
           <button
             v-if="shops.length > 1"
@@ -583,11 +547,7 @@ function goToCategory(c: CategoryWithImage) {
                 <img loading="lazy" decoding="async" v-if="s.image" :src="resolveImageUrl(s.image)" :alt="s.shop_name" class="w-full h-full object-cover object-top" />
                 <MapPin aria-hidden="true" v-else class="w-8 h-8 text-gray-300" />
               </div>
-              <!-- Fixed-height text block (regardless of name/address length)
-                   so every card in the rail lines up at the same height —
-                   title/address each reserve exactly 2 lines' worth of
-                   space, the phone block always renders (blank if a shop
-                   has none) instead of collapsing away. -->
+              <!-- ความสูงข้อความคงที่ ให้การ์ดสาขาทุกใบสูงเท่ากัน -->
               <div class="p-4 flex flex-col flex-1">
                 <p class="text-base font-bold text-brand-700 leading-snug line-clamp-2 min-h-[2.75rem]">{{ s.shop_name }}</p>
                 <p class="text-sm text-gray-500 leading-snug line-clamp-2 min-h-[2.5rem] mt-1.5">{{ s.address }}</p>

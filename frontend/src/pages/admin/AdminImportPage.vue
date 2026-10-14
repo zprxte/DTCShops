@@ -2,7 +2,6 @@
   <div class="space-y-4">
     <h1 class="text-xl font-bold text-gray-800">นำเข้าสินค้าจาก Excel</h1>
 
-    <!-- 1. ดาวน์โหลดเทมเพลต -->
     <section class="bg-white border rounded-xl p-5 space-y-3">
       <h2 class="font-semibold text-gray-800">1. ดาวน์โหลดเทมเพลต</h2>
       <ul class="text-sm text-gray-600 list-disc pl-5 space-y-1">
@@ -25,7 +24,6 @@
       </button>
     </section>
 
-    <!-- 2. อัปโหลด -->
     <section class="bg-white border rounded-xl p-5 space-y-3">
       <h2 class="font-semibold text-gray-800">2. อัปโหลดไฟล์เพื่อตรวจก่อนบันทึก</h2>
       <label
@@ -70,7 +68,6 @@
       </label>
     </section>
 
-    <!-- 3. พรีวิว -->
     <template v-if="plan">
       <section ref="reviewSection" class="bg-white border rounded-xl p-5 space-y-4 scroll-mt-20">
         <h2 class="font-semibold text-gray-800">3. ตรวจรายการก่อนบันทึก</h2>
@@ -96,7 +93,6 @@
           ไม่เปลี่ยน: สินค้า {{ plan.summary.product_unchanged }} แถว · คุณสมบัติ {{ plan.summary.spec_unchanged }} ช่อง (ข้ามไป ไม่บันทึกซ้ำ)
         </p>
 
-        <!-- หัวข้อสเปคที่ยังไม่มีในระบบ -->
         <div v-if="plan.unknown_attributes.length" class="border border-amber-300 bg-amber-50 rounded-xl p-4 space-y-3">
           <p class="text-sm text-amber-900 font-medium">
             พบหัวข้อคุณสมบัติที่ยังไม่มีในระบบ {{ plan.unknown_attributes.length }} หัวข้อ — เลือกว่าหมายถึงหัวข้อไหน หรือจะสร้างหัวข้อใหม่
@@ -120,7 +116,7 @@
               </label>
               <div class="flex items-center gap-1.5 w-full sm:w-auto">
                 <span class="text-gray-600 whitespace-nowrap">หรือพิมพ์ค้นหาหัวข้ออื่น:</span>
-                <!-- พิมพ์กรองได้ แทน dropdown ยาวร้อยกว่ารายการ · เลือกได้เฉพาะชื่อที่มีอยู่จริง -->
+                <!-- ช่องพิมพ์กรองแทน dropdown ยาว · เลือกได้เฉพาะชื่อที่มีจริง -->
                 <AttributeNameCombobox
                   :model-value="otherText[u.name] ?? otherChoiceName(u)"
                   :options="attributeNames"
@@ -139,7 +135,6 @@
           ซ่อนแถวที่ไม่เปลี่ยน
         </label>
 
-        <!-- ตารางสินค้า -->
         <div class="space-y-2">
           <h3 class="text-sm font-semibold text-gray-700">ข้อมูลสินค้า</h3>
           <div class="overflow-x-auto">
@@ -181,7 +176,6 @@
           </div>
         </div>
 
-        <!-- ตารางสเปค -->
         <div class="space-y-2">
           <h3 class="text-sm font-semibold text-gray-700">ค่าคุณสมบัติ</h3>
           <div class="overflow-x-auto">
@@ -242,10 +236,7 @@
 </template>
 
 <script setup lang="ts">
-// นำเข้าสินค้า + สเปคจาก Excel (A10 ทำกลับมา 25 ก.ย. 2026)
-// ขั้นตอน: ดาวน์โหลดเทมเพลต → อัปโหลด (/parse ยังไม่เขียน) → เลือกหัวข้อสเปคที่ไม่รู้จัก
-// (/plan คำนวณใหม่ทุกครั้งที่เลือก) → ยืนยัน (/commit ตรวจซ้ำฝั่ง server แล้วเขียนใน transaction เดียว)
-// หน้าพรีวิวนี้คือขั้นยืนยันในตัว จึงไม่มีป็อปอัปถามซ้ำ
+// นำเข้าจาก Excel: ดาวน์โหลดเทมเพลต → อัปโหลด (/parse) → เลือกหัวข้อที่ไม่รู้จัก (/plan) → ยืนยัน (/commit)
 import { computed, nextTick, ref } from 'vue'
 import { CheckCircle2, Download, FileSpreadsheet, X } from 'lucide-vue-next'
 import { adminAPI } from '../../services/api'
@@ -286,7 +277,7 @@ const fileName = ref('')
 const rows = ref<{ products: unknown[]; specs: unknown[] } | null>(null)
 const plan = ref<Plan | null>(null)
 const loaded = computed(() => !!fileName.value && !parsing.value && !dragging.value)
-// ชื่อหัวข้อตามไฟล์ → รหัสหัวข้อเดิม (string) หรือ 'create'
+// ชื่อหัวข้อในไฟล์ → รหัสหัวข้อเดิม หรือ 'create'
 const choices = ref<Record<string, string>>({})
 const attributes = ref<{ attribute_id: number; attribute_name: string }[]>([])
 
@@ -302,13 +293,14 @@ const statusMessage = computed(() => {
   return 'พร้อมบันทึก'
 })
 
-// ข้อความยาว (เช่น รายละเอียดสินค้า) ตัดให้พอดีตาราง
+// ตัดข้อความยาวให้พอดีตาราง
 function short(value: unknown) {
   if (value === null || value === undefined || value === '') return '(ว่าง)'
   const text = String(value).replace(/\s+/g, ' ')
   return text.length > 80 ? `${text.slice(0, 80)}…` : text
 }
 
+// ดาวน์โหลดเทมเพลต .xlsx
 async function downloadTemplate() {
   downloading.value = true
   try {
@@ -338,6 +330,7 @@ function onDrop(event: DragEvent) {
   if (file) parse(file)
 }
 
+// อัปโหลดแล้วอ่านไฟล์ → พรีวิว
 async function parse(file: File) {
   if (!/\.xlsx$/i.test(file.name)) {
     toast.error('รองรับเฉพาะไฟล์ .xlsx')
@@ -358,11 +351,12 @@ async function parse(file: File) {
     toast.error(err?.response?.data?.message ?? 'อ่านไฟล์ไม่สำเร็จ')
   } finally {
     parsing.value = false
-    // เลือกไฟล์เดิมซ้ำ (แก้แล้วอัปโหลดใหม่) ต้องยิง change ได้อีก
+    // ล้างค่า input ให้เลือกไฟล์เดิมซ้ำได้
     if (fileInput.value) fileInput.value.value = ''
   }
 }
 
+// ตัวเลือกหัวข้อปัจจุบัน → attribute_map ที่ส่งให้ backend
 function attributeMap() {
   return Object.fromEntries(
     Object.entries(choices.value)
@@ -374,19 +368,19 @@ function attributeMap() {
 function choiceOf(name: string) {
   return choices.value[name] ?? ''
 }
-// ช่องค้นหาหัวข้ออื่น — ข้อความที่กำลังพิมพ์ต่อหัวข้อ (undefined = ยังไม่ได้พิมพ์ ให้แสดงชื่อที่เลือกไว้)
+// ข้อความที่กำลังพิมพ์ในช่องค้นหาหัวข้อ (undefined = แสดงชื่อที่เลือกไว้)
 const otherText = ref<Record<string, string>>({})
 const attributeNames = computed(() => attributes.value.map((a) => a.attribute_name))
 const attributeByName = computed(() => new Map(attributes.value.map((a) => [a.attribute_name.trim().toLowerCase(), a])))
 
-// ชื่อที่ช่องค้นหาควรแสดง — เฉพาะตอนเลือกหัวข้อที่ไม่ได้อยู่ในปุ่มแนะนำ
+// ชื่อที่ช่องค้นหาแสดง (เฉพาะหัวข้อที่ไม่อยู่ในปุ่มแนะนำ)
 function otherChoiceName(u: Unknown) {
   const v = choiceOf(u.name)
   if (!v || v === 'create' || u.suggestions.some((s) => String(s.attribute_id) === v)) return ''
   return attributes.value.find((a) => String(a.attribute_id) === v)?.attribute_name ?? ''
 }
 
-// พิมพ์/เลือกในช่องค้นหา — ตรงกับชื่อหัวข้อที่มีอยู่จริงเมื่อไหร่ก็เลือกให้ทันที
+// พิมพ์ตรงชื่อหัวข้อที่มีจริงเมื่อไหร่ เลือกให้ทันที
 function onOtherText(name: string, text: string) {
   otherText.value = { ...otherText.value, [name]: text }
   const match = attributeByName.value.get(text.trim().toLowerCase())
@@ -394,18 +388,20 @@ function onOtherText(name: string, text: string) {
 }
 
 const REASON_LABEL: Record<string, string> = { value: 'ค่าคล้ายกัน', name: 'ชื่อคล้ายกัน', category: 'หมวดเดียวกันใช้อยู่' }
+// เหตุผลที่แนะนำ → ข้อความไทย
 function reasonText(reasons: string[] = []) {
   return reasons.map((r) => REASON_LABEL[r] ?? r).join(' · ')
 }
 
 let planSeq = 0
+// เลือกหัวข้อแล้วขอแผนใหม่
 async function setChoice(name: string, value: string) {
   choices.value = { ...choices.value, [name]: value }
   const seq = ++planSeq
   planning.value = true
   try {
     const res = await adminAPI.planImport({ rows: rows.value, attribute_map: attributeMap() })
-    // เลือกหลายข้อติดกัน — ใช้ผลของคำขอล่าสุดเท่านั้น
+    // เลือกติดกันหลายข้อ ใช้ผลของคำขอล่าสุด
     if (seq === planSeq) plan.value = res.data.plan
   } catch {
     toast.error('คำนวณรายการใหม่ไม่สำเร็จ')
@@ -414,6 +410,7 @@ async function setChoice(name: string, value: string) {
   }
 }
 
+// ยืนยันนำเข้า
 async function commit() {
   committing.value = true
   try {
@@ -422,7 +419,7 @@ async function commit() {
     toast.success(`นำเข้าแล้ว: สินค้าใหม่ ${d.created.length} · แก้ ${d.updated.length} · ค่าคุณสมบัติ ${d.spec_written}${d.images_downloaded ? ` · รูป ${d.images_downloaded}` : ""}`)
     reset()
   } catch (err: any) {
-    // ข้อมูลในระบบเปลี่ยนระหว่างดูพรีวิว — server ส่งแผนใหม่มาให้ดูแทน
+    // ข้อมูลเปลี่ยนระหว่างดูพรีวิว — server ส่งแผนใหม่มาแทน
     if (err?.response?.data?.plan) plan.value = err.response.data.plan
     toast.error(err?.response?.data?.message ?? 'บันทึกไม่สำเร็จ')
   } finally {
@@ -430,6 +427,7 @@ async function commit() {
   }
 }
 
+// เริ่มใหม่ (ล้างไฟล์และพรีวิว)
 function reset() {
   plan.value = null
   rows.value = null

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// รายการแบนเนอร์หน้าแรก — แก้ / ลบ
 import { onMounted, ref } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { Plus, SquarePen, Trash2 } from 'lucide-vue-next'

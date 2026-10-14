@@ -1,7 +1,4 @@
-// ตั้ง rich menu 2 แท็บให้ LINE OA
-//   node setup-richmenu.js          → สร้าง/สร้างใหม่ทั้งชุด (ปุ่มเปรียบเทียบเปิด WEB_BASE_URL/compare ถ้าตั้งไว้)
-//   node setup-richmenu.js --remove → ลบเมนูที่สคริปต์นี้สร้าง (OA กลับไปใช้เมนูจาก OA Manager)
-// bot.js เรียก setupRichMenu() เองตอน npm run bot ที่ไม่มี WEB_BASE_URL — URL ของ tunnel เปลี่ยนทุกครั้ง
+// สร้าง/ลบ rich menu 2 แท็บของ LINE OA (npm run setup / npm run remove)
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,7 +9,7 @@ const dir = path.dirname(FILE);
 const PREFIX = 'dtc-tabs-';
 const ALIASES = { gps: 'tab-gps', shop: 'tab-shop' };
 
-// พิกัดบนภาพ 2500 x 1686: แถบแท็บสูง 238 · ตาราง 3 x 2
+// พิกัดบนภาพ 2500 x 1686: แถบแท็บสูง TAB_H · ตาราง 3 x 2 — แก้ขนาดใน rich-menu.html ต้องแก้ค่าพวกนี้ตาม
 const TAB_H = 238, ROW_H = 724, COLS = [0, 835, 1665, 2500];
 const tabArea = (i, action) => ({ bounds: { x: i * 1250, y: 0, width: 1250, height: TAB_H }, action });
 const cell = (row, col, action) => ({
@@ -22,10 +19,10 @@ const cell = (row, col, action) => ({
 const sw = (to) => ({ type: 'richmenuswitch', richMenuAliasId: ALIASES[to], data: `tab=${to}` });
 const msg = (text, label = text) => ({ type: 'message', label: label.slice(0, 20), text });
 const uri = (u, label) => ({ type: 'uri', label, uri: u });
-// ค้นหา: เปิดแป้นพิมพ์พร้อมเติม "ค้นหา: " — บอทถือว่าข้อความที่ขึ้นต้นแบบนี้คือคำค้น (handler.js) ไม่ต้องจำสถานะ
+// ปุ่มค้นหา: เปิดแป้นพิมพ์พร้อมเติม "ค้นหา: " (handler.js ถือว่าข้อความแบบนี้คือคำค้น)
 const search = () => ({ type: 'postback', label: 'ค้นหาสินค้า', data: 'search', displayText: 'ค้นหาสินค้า', inputOption: 'openKeyboard', fillInText: 'ค้นหา: ' });
 
-// webBase = หน้าเว็บที่คนนอกเปิดได้ · ไม่มี = ปุ่มเปรียบเทียบส่งข้อความให้บอทตอบแทน
+// นิยามเมนู 2 แท็บ · ไม่มี webBase = ปุ่มเปรียบเทียบส่งข้อความให้บอทตอบแทน
 function menus(webBase) {
   return {
     gps: {
@@ -33,7 +30,7 @@ function menus(webBase) {
       areas: [
         tabArea(0, sw('gps')), tabArea(1, sw('shop')),
         cell(0, 0, msg('แจ้งยอดชำระค่าบริการ')),
-        cell(0, 1, sw('shop')), // ดูข้อมูลผลิตภัณฑ์ → เปิดแท็บ DTC SHOPS
+        cell(0, 1, sw('shop')),
         cell(0, 2, msg('สอบถามสินค้า')),
         cell(1, 0, uri('https://www.dtc.co.th', 'ติดตามรถยนต์')), // TODO: ใส่ลิงก์ระบบติดตามรถของจริง
         cell(1, 1, msg('สอบถามเรื่องอื่นๆ')),
@@ -55,6 +52,7 @@ function menus(webBase) {
   };
 }
 
+// ลบ rich menu และ alias ที่สคริปต์นี้สร้าง
 export async function removeRichMenu({ log = console.log } = {}) {
   const { aliases } = await line('GET', '/v2/bot/richmenu/alias/list');
   for (const a of aliases) if (Object.values(ALIASES).includes(a.richMenuAliasId)) {
@@ -67,6 +65,7 @@ export async function removeRichMenu({ log = console.log } = {}) {
   }
 }
 
+// สร้างเมนู 2 ชุด + อัปโหลดรูป + alias + ตั้งเป็นเมนูเริ่มต้น
 export async function setupRichMenu({ webBase = '', log = console.log } = {}) {
   await removeRichMenu({ log });
   const ids = {};
@@ -91,7 +90,6 @@ export async function setupRichMenu({ webBase = '', log = console.log } = {}) {
   return ids;
 }
 
-// รันเป็นสคริปต์ (npm run setup / npm run remove)
 if (process.argv[1] && path.resolve(process.argv[1]) === FILE) {
   if (process.argv.includes('--remove')) {
     await removeRichMenu();

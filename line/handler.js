@@ -1,44 +1,38 @@
-// ส่วนตอบข้อความของบอท (แท็บ DTC SHOPS) — รับ webhook จาก LINE แล้วดึงข้อมูลจาก API ของระบบเรา
-// ใช้ร่วมกันสองที่:
-//   bot.js                         — npm run bot ในเครื่อง (เซิร์ฟเวอร์ :4100 + tunnel)
-//   frontend/api/line/webhook.js   — Vercel Function ของเว็บทดสอบ (ออนไลน์ตลอด ไม่ต้องมี tunnel)
+// ส่วนตอบข้อความของบอท LINE แท็บ DTC SHOPS — ใช้ร่วมกันทั้ง bot.js และ Vercel (frontend/api/line/webhook.js)
 import crypto from 'crypto';
 import { loadLineEnv, envValue, line } from './env.js';
 import { productCarousel, specBubble, shopCarousel, quickReply } from './flex.js';
 
-// ปุ่มในแท็บ DTC GPS & IoT ให้คนตอบ (Chat) — บอทไม่ยุ่ง
+// ปุ่มในแท็บ DTC GPS & IoT ให้เจ้าหน้าที่ตอบ บอทไม่ยุ่ง
 const HUMAN_TOPICS = new Set(['แจ้งยอดชำระค่าบริการ', 'สอบถามสินค้า', 'สอบถามเรื่องอื่นๆ']);
 
-// ค้นหาแบบไม่ต้องจำสถานะ: ปุ่ม "ค้นหาสินค้า" เปิดแป้นพิมพ์พร้อมเติม "ค้นหา: " ไว้ให้
-// ข้อความที่ขึ้นต้นด้วย "ค้นหา:" (หรือ "ค้นหา " เว้นวรรค) = คำค้น · ข้อความอื่นปล่อยให้เจ้าหน้าที่ตอบ
-// บอทจึงไม่ต้องจำว่าใครเพิ่งกดปุ่ม — ทำงานได้บน Vercel ที่แต่ละคำขออาจได้เครื่องใหม่
+// ข้อความที่ขึ้นต้นด้วย "ค้นหา:" = คำค้น ข้อความอื่นปล่อยให้เจ้าหน้าที่ — บอทจึงไม่ต้องจำสถานะ (Vercel อาจได้เครื่องใหม่ทุกคำขอ)
 const SEARCH_PREFIX = 'ค้นหา: ';
 const SEARCH_TYPED = /^ค้นหา(?:\s*[:：]|\s)\s*([\s\S]*)$/;
 const searchButton = { label: 'ค้นหาสินค้า', data: 'search', keyboard: SEARCH_PREFIX };
-// ตัวอย่างคำค้น: postback ค้นตรงๆ ไม่ต้องพิมพ์ (ข้อความในแชตแสดงเป็น "ค้นหา: …")
 const example = (label, word = label) => ({ label, data: new URLSearchParams({ more: word, page: '1' }).toString(), text: SEARCH_PREFIX + word });
 const SEARCH_HINT = 'พิมพ์ชื่อสินค้า รุ่น หรือคุณสมบัติต่อจาก “ค้นหา:” แล้วกดส่งได้เลยครับ เช่น ค้นหา: Hikvision (หรือเลือกด้านล่าง)';
 const searchExamples = () => quickReply([example('กล้องติดรถยนต์'), example('GPS ติดตามรถ', 'GPS'), example('DTRACK'), example('Hikvision'), example('กันน้ำ IP67', 'IP67'), searchButton]);
 
-// ผลค้นหาส่งทีละชุด: carousel มีได้ 12 ใบ = สินค้า 11 + การ์ด "ดูเพิ่มเติม" (ชุดสุดท้ายไม่มีการ์ดนี้)
+// carousel มีได้ 12 ใบ = สินค้า 11 + การ์ดดูเพิ่มเติม
 const SEARCH_PAGE = 11;
 
-// คำถามถึงเจ้าหน้าที่ที่พิมพ์มาตอนอยู่ในโหมดค้นหา เช่น "ส่งของกี่วันครับ" — ใช้เฉพาะตอนค้นไม่เจอ
-// (ถามถึงสินค้าที่มีอยู่ เช่น "DTRACK ราคาเท่าไหร่" ยังได้การ์ดสินค้าตามปกติ)
+// คำถามถึงเจ้าหน้าที่ — ใช้ตัดสินเฉพาะตอนค้นไม่เจอ
 const QUESTION = /[?？]|ไหม|มั้ย|มั๊ย|เปล่า|ยังไง|อย่างไร|เท่าไ|กี่|ทำไม|ไหน|อะไร|บ้าง|หรือไม่|เมื่อไ|สอบถาม|ทราบ|รบกวน|ช่วย|ติดต่อ|ครับ|คะ|ค่ะ|จ้า|ขอบคุณ|สวัสดี/;
 const STAFF = 'สอบถามเจ้าหน้าที่';
-// คำลงท้าย/คำถามที่ไม่ใช่ชื่อสินค้า — ตัดก่อนค้น ไม่งั้น "มีกล้องกันน้ำไหม" ค้นไม่เจอ
-// (ตัวยาวอยู่หน้าตัวสั้น: "ได้ไหม" ต้องหลุดทั้งก้อน ไม่เหลือ "ได้")
+// คำลงท้าย/คำถามที่ตัดก่อนค้น — ตัวยาวต้องอยู่หน้าตัวสั้น ("ได้ไหม" ต้องหลุดทั้งก้อน ไม่เหลือ "ได้")
 const FILLER = /ครับ|คับ|ค่ะ|คะ|จ้า|ได้ไหม|ได้มั้ย|ไหม|มั้ย|มั๊ย|หรือเปล่า|รึเปล่า|หรือไม่|เท่าไหร่|เท่าไร|ราคา|มีกี่รุ่น|กี่รุ่น|(?:รุ่น|ตัว|แบบ|อัน)ไหน(?:ดี)?|อะไรบ้าง|บ้าง|อยากได้|สนใจ|มีขาย|^มี|[?？]/g;
+// ตัดคำลงท้าย/คำถามออกจากข้อความก่อนค้น
 const cleanQuery = (s) => s.replace(FILLER, ' ').replace(/\s+/g, ' ').trim();
 
-// ชื่อ/แท็ก/หมวดตรงคำค้น — ค่าสเปคมีน้ำหนัก 0.8 (search.js itemFields) ผลที่มาจากสเปคล้วนจึงได้ไม่เกิน 0.8
+// ชื่อ/แท็ก/หมวดตรงคำค้น — ผลจากค่าสเปคล้วนได้คะแนนไม่เกิน 0.8 (search.js)
 const nameHit = (p) => p.exact_term || p.relevance_score > 0.81;
 
 const text = (t, extra = {}) => ({ type: 'text', text: t, ...extra });
+// ตอบกลับ LINE (สูงสุด 5 ข้อความต่อครั้ง)
 const reply = (token, messages) => line('POST', '/v2/bot/message/reply', { replyToken: token, messages: [].concat(messages).slice(0, 5) });
 
-// ลายเซ็นยืนยันว่าคำขอมาจาก LINE จริง (HMAC-SHA256 ด้วย channel secret)
+// ตรวจลายเซ็นว่าคำขอมาจาก LINE จริง (HMAC-SHA256 ด้วย channel secret)
 export function validSignature(raw, sig) {
   if (!sig) return false;
   const expect = crypto.createHmac('sha256', loadLineEnv().secret).update(raw).digest();
@@ -46,10 +40,7 @@ export function validSignature(raw, sig) {
   return got.length === expect.length && crypto.timingSafeEqual(got, expect);
 }
 
-// config.api       — origin ของ backend (เรียก /api/...)
-// config.webBase() — หน้าเว็บที่คนนอกเปิดได้ (ปุ่ม "ดูคุณสมบัติทั้งหมด" / "เปรียบเทียบ") · ว่าง = ไม่มีปุ่ม
-// config.imageBase() — origin ที่ LINE โหลดรูป /uploads/... ได้ผ่าน HTTPS · ว่าง = การ์ดไม่มีรูป
-// เป็นฟังก์ชันเพราะ npm run bot รู้ URL ของ tunnel หลังเปิดเครื่องแล้ว
+// สร้างบอท — webBase/imageBase เป็นฟังก์ชันเพราะ npm run bot รู้ URL ของ tunnel หลังเปิดแล้ว
 export function createBot({ api: apiOrigin, webBase, imageBase }) {
   const API = apiOrigin.replace(/\/$/, '');
 
@@ -58,38 +49,34 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     webUrl: (p) => (webBase() ? `${webBase()}/product/${encodeURIComponent(p.slug || p.product_id)}` : null),
   };
 
+  // เรียก API ของระบบแล้วคืน JSON
   async function api(path) {
     const res = await fetch(API + path);
     if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
     return res.json();
   }
 
+  // ส่งข้อความนำ + carousel สินค้า
   async function sendProducts(token, products, intro) {
     if (!products.length) return reply(token, text('ไม่พบสินค้าครับ'));
     return reply(token, [text(intro), productCarousel(products, ctx, intro)]);
   }
 
-  // คำถามที่บอทตอบไม่ได้ — ข้อความถัดไป (ที่ไม่ขึ้นต้นด้วย "ค้นหา:") ไปถึงเจ้าหน้าที่ใน Chat อยู่แล้ว
+  // ส่งต่อเจ้าหน้าที่ — ข้อความถัดไปที่ไม่ขึ้นต้นด้วย "ค้นหา:" ไปถึงเจ้าหน้าที่ใน Chat อยู่แล้ว
   async function handoff(token) {
     return reply(token, text('ส่งเรื่องให้เจ้าหน้าที่แล้วครับ พิมพ์รายละเอียดเพิ่มได้เลย เจ้าหน้าที่จะตอบในแชตนี้', {
       quickReply: quickReply([searchButton, { label: 'สินค้าแนะนำ' }, { label: 'หมวดหมู่สินค้า' }]),
     }));
   }
 
-  // user = มาจากข้อความ "ค้นหา: …" ที่พิมพ์เอง (ไม่ใช่ปุ่มดูเพิ่มเติม/ตัวอย่าง) → ค้นไม่เจอแล้วส่งต่อเจ้าหน้าที่ได้
-  // scope = '' ผลหลัก · 'spec' = เฉพาะสินค้าที่มีคำค้นแค่ในคุณสมบัติ (กดจากปุ่มใต้ผลหลัก)
-  // ดึงผลทั้งหมดครั้งเดียว (สินค้ามีไม่กี่สิบตัว) แล้วแบ่งชุดเอง เพราะต้องแยก "ชื่อตรง" ออกจาก "สเปคตรง" ก่อนแบ่งหน้า
+  // ค้นหาแล้วตอบเป็นชุดละ 11 ใบ — ชื่อตรงมาก่อน สินค้าที่ตรงแค่สเปคอยู่หลังปุ่ม (scope = 'spec')
   async function onSearch(token, word, page = 1, user = null, typed = word, scope = '') {
     const r = await api(`/api/search?searchword=${encodeURIComponent(word)}&limit=100`);
-    // ข้อความที่พิมพ์มา: ผลที่ไม่มีคำไหนตรงชัดสักคำ (matched_words = 0) คือ fuzzy เดามั่ว
-    // เช่น "ครับ" / "ผ่อนได้" ได้การ์ดกล้อง 15 ใบ — นับเป็นค้นไม่เจอ
-    // ประโยคคำถามเข้มกว่า: ต้องตรงชัดครบทุกคำ ("หน้าร้าน" ตรงแค่ "หน้า" ของกล้องติดหน้ารถ ≠ สินค้า)
+    // ข้อความที่พิมพ์เองแต่ไม่มีคำตรงชัดสักคำ = fuzzy เดามั่ว นับเป็นค้นไม่เจอ (ประโยคคำถามต้องตรงครบทุกคำ)
     const question = user && QUESTION.test(typed);
     const need = question ? Math.max(1, (r.query_words || []).length) : 1;
     const weak = user && !r.products.some((p) => p.matched_words >= need);
     if (r.products.length && !weak) {
-      // มีสินค้าที่ชื่อตรง → แสดงเฉพาะตัวนั้น ("sd card" = การ์ด Sandisk ไม่ใช่กล้องที่สเปคเขียนว่ารองรับ SD Card)
-      // สินค้าที่ตรงแค่สเปคย้ายไปไว้หลังปุ่ม ไม่หายไปเฉยๆ (ค้นฟีเจอร์อย่าง ADAS ยังต้องเจอ)
       const named = r.products.filter(nameHit);
       const specOnly = r.products.filter((p) => !nameHit(p));
       const list = scope === 'spec' ? specOnly : named.length ? named : r.products;
@@ -127,7 +114,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     ));
   }
 
-  // สาขาทีละชุด: 11 ใบ + การ์ด "ดูเพิ่มเติม" (กดแล้ว postback shops=<หน้า>) · ชุดสุดท้ายไม่มีการ์ดนี้
+  // ส่งการ์ดสาขาชุดละ 11 ใบ + การ์ดดูเพิ่มเติม
   async function onShops(token, page = 1) {
     const shops = await api('/api/shops');
     const PER = 11;
@@ -141,13 +128,14 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     return reply(token, [text(intro), shopCarousel(part, ctx, intro, more)]);
   }
 
+  // ตอบข้อความที่ผู้ใช้พิมพ์/กดเมนู
   async function onText(ev) {
     const msg = ev.message.text.trim();
     const user = ev.source.userId;
     const token = ev.replyToken;
 
     switch (msg) {
-      case 'ค้นหาสินค้า': // เมนูรุ่นเก่า (ส่งข้อความ) / พิมพ์เอง — เมนูปัจจุบันเป็น postback "search"
+      case 'ค้นหาสินค้า':
         return reply(token, text(SEARCH_HINT, { quickReply: searchExamples() }));
       case 'สินค้าแนะนำ': {
         const r = await api('/api/products?sort=popular&limit=10');
@@ -159,7 +147,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
           quickReply: quickReply(cats.map((c) => ({ label: c.category_name, data: `cat=${c.category_id}`, text: c.category_name }))),
         }));
       }
-      case 'เปรียบเทียบสินค้า': // ปกติปุ่มเมนูเปิดหน้าเว็บเอง — ข้อความนี้มาเมื่อเมนูถูกตั้งตอนยังไม่มีเว็บ
+      case 'เปรียบเทียบสินค้า':
         return reply(token, text(webBase()
           ? `เปรียบเทียบสินค้าได้สูงสุด 4 รายการที่ ${webBase()}/compare`
           : 'หน้าเปรียบเทียบบนเว็บยังไม่เปิดให้ใช้จากภายนอกครับ กด “ดูคุณสมบัติ” บนการ์ดสินค้าเพื่อดูสเปคทีละรายการได้', {
@@ -174,19 +162,19 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     }
 
     if (msg === STAFF) return handoff(token);
-    if (HUMAN_TOPICS.has(msg)) return; // ให้เจ้าหน้าที่ตอบใน Chat
+    if (HUMAN_TOPICS.has(msg)) return;
 
     const m = msg.match(SEARCH_TYPED);
     if (m) {
       const typed = m[1].trim().replace(/^GPS ติดตามรถ$/, 'GPS');
-      if (!typed) return reply(token, text(SEARCH_HINT, { quickReply: searchExamples() })); // ส่ง "ค้นหา:" เปล่าๆ
+      if (!typed) return reply(token, text(SEARCH_HINT, { quickReply: searchExamples() }));
       const q = cleanQuery(typed);
-      if (!q && QUESTION.test(typed)) return handoff(token); // "ค้นหา: ครับ" / "?" อย่างเดียว
+      if (!q && QUESTION.test(typed)) return handoff(token);
       return onSearch(token, q || typed, 1, user, typed);
     }
-    // ข้อความอื่นปล่อยให้เจ้าหน้าที่ตอบ
   }
 
+  // ตอบปุ่ม postback (ค้นหา / ดูคุณสมบัติ / ดูเพิ่มเติม / หมวดหมู่ / สาขา)
   async function onPostback(ev) {
     const data = new URLSearchParams(ev.postback.data);
     if (data.has('search')) return reply(ev.replyToken, text(SEARCH_HINT, { quickReply: searchExamples() })); // แป้นพิมพ์เปิดพร้อม "ค้นหา: " แล้ว
@@ -202,6 +190,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     }
   }
 
+  // จัดการ event เดียว — ล้มแล้วตอบว่าระบบขัดข้อง
   async function handle(ev) {
     console.log('[event]', ev.type, ev.message?.text ?? ev.postback?.data ?? '');
     try {
@@ -213,8 +202,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
     }
   }
 
-  // raw = body ดิบ (Buffer) ตามที่ LINE ส่งมา — ต้องใช้ตัวดิบตรวจลายเซ็น ห้าม parse แล้ว stringify ใหม่
-  // คืน false = ลายเซ็นผิด (ตอบ 401) · ไม่งั้นคืน Promise ที่จบเมื่อตอบทุก event แล้ว
+  // รับ webhook: ต้องใช้ body ดิบตรวจลายเซ็น (ห้าม parse แล้ว stringify ใหม่) · คืน false = ลายเซ็นผิด
   function handleWebhook(raw, signature) {
     if (!validSignature(raw, signature)) return false;
     const { events = [] } = JSON.parse(raw.toString('utf8'));
@@ -224,7 +212,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
   return { handleWebhook };
 }
 
-// ค่าจาก env สำหรับที่ที่ URL ไม่เปลี่ยนระหว่างรัน (Vercel / --no-tunnel)
+// สร้างบอทจากค่า env (Vercel / --no-tunnel ที่ URL ไม่เปลี่ยนระหว่างรัน)
 export function botFromEnv() {
   const web = envValue('WEB_BASE_URL').replace(/\/$/, '');
   const images = (envValue('PUBLIC_BASE_URL') || web).replace(/\/$/, '');

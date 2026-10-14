@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// แสดงคิว toast มุมจอ
 import { toastState } from '../../stores/toast'
 
 const STYLES: Record<string, string> = {
@@ -9,9 +10,7 @@ const STYLES: Record<string, string> = {
 </script>
 
 <template>
-  <!-- aria-live=polite + role=status — โปรแกรมอ่านหน้าจอจะอ่านข้อความแจ้งเตือน
-       ที่โผล่มาให้เอง (Week 14 — accessibility) เดิมเป็น div เปล่าที่คนใช้
-       โปรแกรมอ่านหน้าจอไม่มีทางรู้เลยว่ามีข้อความเด้งขึ้นมา -->
+  <!-- aria-live ให้โปรแกรมอ่านหน้าจออ่านข้อความแจ้งเตือนให้ -->
   <div
     role="status"
     aria-live="polite"

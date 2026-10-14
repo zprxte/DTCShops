@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/app_colors.dart';
 import '../language/app_language.dart';
 
-// กำลังโหลด — ทุกหน้าที่รอ API ใช้ตัวนี้ตัวเดียว
+// ตัวหมุนตอนกำลังโหลด
 class LoadingView extends StatelessWidget {
   const LoadingView({super.key});
 
@@ -12,17 +12,13 @@ class LoadingView extends StatelessWidget {
       const Center(child: CircularProgressIndicator());
 }
 
-// โหลดไม่สำเร็จ — ข้อความอธิบาย + ปุ่มลองใหม่ (ถ้าหน้านั้นโหลดซ้ำได้)
-//
-// เดิมแต่ละหน้าประกอบเองคนละแบบ บางหน้าโชว์ `'Error: $e'` ดิบๆ เป็นภาษาอังกฤษ
-// ทั้งที่ส่วนอื่นของแอปแปลครบ 3 ภาษา — รวมมาที่เดียวแล้วทุกหน้าได้ข้อความเดียวกัน
+// โหลดไม่สำเร็จ: ข้อความ + ปุ่มลองใหม่ (ทุกหน้าใช้ตัวเดียวกัน)
 class ErrorView extends StatelessWidget {
   const ErrorView({super.key, required this.error, this.title, this.onRetry});
 
-  // ตัวข้อผิดพลาดจริง (แสดงเป็นบรรทัดเล็กไว้ให้แจ้งปัญหาได้)
+  // ข้อผิดพลาดจริง (บรรทัดเล็กไว้แจ้งปัญหา)
   final Object? error;
 
-  // หัวข้อเฉพาะหน้า เช่น "โหลดข้อมูลเปรียบเทียบไม่สำเร็จ"
   final String? title;
 
   final VoidCallback? onRetry;

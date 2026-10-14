@@ -1,9 +1,5 @@
 <script setup lang="ts">
-// "สินค้า" > "โมเดลสินค้า" — a browse-everything view across all products'
-// models. เพิ่ม/แก้ไข ย้ายไปเป็นฟอร์มเต็มหน้า (AdminModelFormPage.vue, 4 ก.ย.
-// 2026 — เดิมเป็น popup) หน้านี้เหลือแค่รายการ + ลบ, จัดกลุ่มแถวตามประเภท
-// สินค้าของสินค้าที่เป็นเจ้าของโมเดลนั้น (โมเดลที่ยังไม่มีเจ้าของ หรือสินค้า
-// เจ้าของยังไม่ได้ตั้งประเภท จะอยู่กลุ่ม "ยังไม่ได้ผูกกับสินค้า/ไม่มีประเภท")
+// รายการโมเดลทั้งหมด จัดกลุ่มตามหมวดของสินค้าเจ้าของ — ค้นหา / ลบ (แก้ไขที่ AdminModelFormPage)
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Plus, SquarePen, Trash2 } from 'lucide-vue-next'
 import { adminAPI } from '../../services/api'
@@ -27,7 +23,7 @@ const loading = ref(true)
 const pendingDeleteId = ref<string | null>(null)
 const deleting = ref(false)
 
-// เลขคำขอล่าสุด — พิมพ์เร็วๆ คำขอเก่าอาจตอบกลับทีหลังคำขอใหม่ ให้ใช้ผลของคำขอล่าสุดเท่านั้น
+// คำขอล่าสุดชนะ (พิมพ์เร็วคำขอเก่าอาจตอบทีหลัง)
 let latestRequest = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -43,13 +39,14 @@ function load() {
 }
 onMounted(load)
 
-// ค้นหาทันทีขณะพิมพ์ (แบบเดียวกับหน้าสินค้า/คุณสมบัติ) — รอหยุดพิมพ์ 300ms ก่อนยิงคำขอ
+// ค้นหาขณะพิมพ์ หน่วง 300ms
 function onSearchInput() {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(load, 300)
 }
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
+// จัดกลุ่มโมเดลตามหมวดของสินค้าเจ้าของ
 const groups = computed(() => {
   const map = new Map<string, { label: string; rows: ModelRow[] }>()
   for (const r of rows.value) {

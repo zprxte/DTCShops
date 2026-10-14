@@ -2,12 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import type { TranslationKey } from '../language/translations'
 
-// ชื่อแท็บเบราว์เซอร์ของแต่ละหน้า — ใช้โดย composables/usePageTitle.ts
+// ชื่อแท็บเบราว์เซอร์ (usePageTitle.ts)
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
-    title?: string // ฝั่งแอดมิน (ไทยล้วน)
-    titleKey?: TranslationKey // ฝั่ง Public (แปลตามภาษา)
+    title?: string
+    titleKey?: TranslationKey
   }
 }
 
@@ -16,14 +16,9 @@ const AdminLayout = () => import('../components/layouts/AdminLayout.vue')
 
 const router = createRouter({
   history: createWebHistory(),
-  // ตำแหน่งเลื่อนหน้าเวลาเปลี่ยนหน้า — ไม่ตั้งไว้ Vue Router จะคงตำแหน่งเดิม
-  // (เคยเป็นบั๊ก: กดการ์ดหมวดหมู่ที่อยู่ค่อนล่างของหน้าแรก แล้วหน้าสินค้าเปิดมาอยู่ท้ายรายการ)
+  // เปลี่ยนหน้าแล้วเริ่มบนสุด · ย้อนกลับคืนตำแหน่งเดิม · query เปลี่ยนในหน้าเดิมไม่กระโดด
   scrollBehavior(to, from, savedPosition) {
-    // ย้อนกลับ/ไปข้างหน้าของเบราว์เซอร์ = คืนตำแหน่งที่เคยอยู่ — แต่ต้องรอให้ความสูงหน้า "นิ่ง" ก่อน
-    // หน้าแรกโหลดแบนเนอร์/หมวดหมู่แบบ async และกรอบแบนเนอร์คำนวณความสูงจากสัดส่วนรูปหลังรูปโหลด
-    // ถ้าคืนตำแหน่งตอนหน้ายังยืดอยู่ scroll anchoring ของเบราว์เซอร์จะดันเลยไปไกลกว่าเดิม
-    // (วัดจริง: เดิมอยู่ 825 คืนทันทีได้ 1239, รอแค่ให้สูงพอได้ 1892) — จึงรอจนความสูงไม่เปลี่ยน
-    // ต่อเนื่อง 400ms (สูงสุด 2.5 วินาที)
+    // ย้อนกลับต้องรอความสูงหน้านิ่ง (400ms, สูงสุด 2.5 วินาที) ไม่งั้น scroll anchoring ดันเลยตำแหน่งเดิม
     if (savedPosition) {
       return new Promise((resolve) => {
         const started = Date.now()
@@ -43,28 +38,23 @@ const router = createRouter({
         waitUntilStable()
       })
     }
-    // หน้าเดิมแต่ query เปลี่ยน (ติ๊กตัวกรอง / ค้นหาใหม่ในหน้าสินค้า) = ไม่กระโดด
     if (to.path === from.path) return false
     return { top: 0 }
   },
   routes: [
-    // ===== Public Routes =====
     {
       path: '/',
       component: PublicLayout,
       children: [
         { path: '', name: 'home', component: () => import('../pages/public/HomePage.vue'), meta: { titleKey: 'navHome' } },
         { path: 'products', name: 'products', component: () => import('../pages/public/ProductsPage.vue'), meta: { titleKey: 'navProducts' } },
-        // ชื่อสินค้าถูกตั้งจากหน้าเองหลังโหลดข้อมูล (pageTitleOverride)
         { path: 'product/:slug', name: 'product-detail', component: () => import('../pages/public/ProductDetailPage.vue') },
         { path: 'compare', name: 'compare', component: () => import('../pages/public/ComparePage.vue'), meta: { titleKey: 'navCompare' } },
       ],
     },
 
-    // ===== Admin Auth =====
     { path: '/admin/login', name: 'admin-login', component: () => import('../pages/admin/AdminLoginPage.vue'), meta: { title: 'เข้าสู่ระบบ' } },
 
-    // ===== Admin Protected Routes =====
     {
       path: '/admin',
       component: AdminLayout,
@@ -97,12 +87,11 @@ const router = createRouter({
       ],
     },
 
-    // Fallback
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
 
-//ป้องกันหน้าแอดมิน
+// หน้าแอดมินต้องล็อกอินก่อน
 router.beforeEach((to) => {
   if (to.meta.requiresAuth) {
     const auth = useAuthStore()

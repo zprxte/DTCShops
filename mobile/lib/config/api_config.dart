@@ -1,3 +1,4 @@
+// ที่อยู่ backend (ตั้งผ่าน --dart-define=API_ORIGIN) + ต่อ origin ให้ path รูป /uploads/...
 class ApiConfig {
   static const origin = String.fromEnvironment(
     'API_ORIGIN',

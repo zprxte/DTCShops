@@ -1,12 +1,5 @@
 <script setup lang="ts">
-// "โฆษณาร้านค้า" > "สินค้าใหม่" — no new table for this at all: it's just
-// existing products (tbl_item) that have a sale_start_date/sale_end_date
-// set, the same two fields the product-edit form's own "ข้อมูลทั่วไป" tab
-// already collects. "เพิ่มรายการใหม่" here just picks an existing product
-// and sets those two dates via PATCH /admin/products/:id/sale-dates — NOT the
-// edit form's PUT /admin/products/:id, which requires product_name and
-// full-replaces the whole product (that mismatch made this page fail with 400
-// on every save until 2026-09-11).
+// สินค้าใหม่ = สินค้าที่ตั้งวันวางจำหน่าย — บันทึกผ่าน PATCH sale-dates (PUT เป็น full-replace)
 import { computed, onMounted, ref } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { Plus, Trash2, X } from 'lucide-vue-next'
@@ -37,7 +30,6 @@ function load() {
 }
 onMounted(load)
 
-// Add-new modal
 const modalOpen = ref(false)
 const pickProductId = ref('')
 const pickStart = ref('')
@@ -52,6 +44,7 @@ function openAdd() {
   modalOpen.value = true
 }
 
+// ตั้งวันวางจำหน่ายให้สินค้าที่เลือก
 async function handleAdd() {
   if (!pickProductId.value) {
     toast.error('กรุณาเลือกสินค้า')
@@ -74,6 +67,7 @@ async function handleAdd() {
   }
 }
 
+// ล้างวันวางจำหน่าย (เอาออกจากสินค้าใหม่)
 async function handleRemove(id: string) {
   try {
     await adminAPI.updateProductSaleDates(id, { sale_start_date: null, sale_end_date: null })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronRight } from 'lucide-vue-next'
 
-// items: last item has no `to` and renders as the current (non-link) page.
+// รายการลำดับหน้า — ตัวสุดท้ายไม่มี to = หน้าปัจจุบัน
 defineProps<{
   items: { label: string; to?: string }[]
 }>()

@@ -1,7 +1,6 @@
 import { reactive } from 'vue'
 
-// Minimal hand-rolled toast queue — replaces react-hot-toast. Kept dependency-free
-// since this is the only thing that library was used for; ToastContainer.vue renders it.
+// คิวข้อความ toast (ToastContainer.vue เป็นตัวแสดง)
 export type ToastKind = 'success' | 'error' | 'info'
 export interface ToastItem {
   id: number
@@ -14,6 +13,7 @@ export const toastState = reactive<{ items: ToastItem[] }>({ items: [] })
 
 const DURATION_MS = 3000
 
+// เพิ่ม toast แล้วลบเองเมื่อครบเวลา
 function push(kind: ToastKind, message: string) {
   const id = nextId++
   toastState.items.push({ id, kind, message })

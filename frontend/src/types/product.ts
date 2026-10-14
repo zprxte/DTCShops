@@ -33,9 +33,7 @@ export interface ProductModel {
   product_attribute_value?: ProductAttributeValue[]
 }
 
-// ตัวเลือกสินค้า / อุปกรณ์เสริมที่ซื้อเพิ่มได้ (tbl_item_option) — คนละอย่างกับ
-// ProductModel ที่เป็นรุ่นย่อยของตัวสินค้าเอง; แสดงเฉพาะหน้ารายละเอียดสินค้า
-// ไม่ถูกดึงเข้าตารางเปรียบเทียบ
+// ตัวเลือกเสริม (tbl_item_option) — แสดงเฉพาะหน้ารายละเอียด ไม่เข้าตารางเปรียบเทียบ
 export interface ProductOption {
   option_id: string
   option_name: string
@@ -71,7 +69,7 @@ export interface ProductDetail {
   product_option?: ProductOption[]
 }
 
-// GET /api/footer response shape — see backend/src/routes/footer.js
+// GET /api/footer
 export interface FooterCertification {
   title: string | null
   name: string | null
@@ -97,7 +95,7 @@ export interface FooterContent {
   social: FooterSocialLink[]
 }
 
-// GET /api/banners response shape — see backend/src/routes/banners.js
+// GET /api/banners
 export interface BannerSlide {
   banner_id: string
   image: string | null

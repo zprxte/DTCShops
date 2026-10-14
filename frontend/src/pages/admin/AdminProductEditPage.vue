@@ -8,10 +8,7 @@ import AttributeNameCombobox from '../../components/common/AttributeNameCombobox
 import AutoGrowTextarea from '../../components/common/AutoGrowTextarea.vue'
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue'
 
-// Doubles as both "add product" (route: /admin/products/new, no :id) and
-// "edit product" (route: /admin/products/:id/edit) — same form, same fields;
-// only the data-loading and submit-target differ (POST create vs PUT
-// update), gated on `isNew` below.
+// ฟอร์มเพิ่ม/แก้ไขสินค้า 5 แท็บ (isNew = ไม่มี :id → POST, มี → PUT)
 
 interface Attribute {
   attribute_id: number
@@ -29,9 +26,6 @@ const isNew = () => !route.params.id
 const emptyForm = () => ({
   sku: '', product_name: '', category_id: '',
   product_price: '', description: '',
-  // Added 2026-08-26 — admin product-edit form overhaul (scope no longer
-  // locked to the original 12-table PDF diagram, see CLAUDE.md). All plain
-  // metadata fields — see database/schema.sql for what each column means.
   stock_quantity: '', sold_count: '',
   sale_start_date: '', sale_end_date: '',
   shopee_link: '', lazada_link: '', tiktok_link: '', line_link: '',
@@ -40,13 +34,7 @@ const emptyForm = () => ({
   video_url: '',
 })
 
-// โมเดลสินค้า = shared catalog ทั้งระบบตั้งแต่ 2026-09-03 (เปลี่ยนจากที่แต่ละ
-// โมเดลเคยเป็นของสินค้าตัวเดียวตายตัว — ดู [[product-model-group]] สำหรับ
-// ดีไซน์เดิม) — ตามภาพหน้าจออ้างอิงที่ผู้ใช้ส่งมา: แท็บ "โมเดลสินค้า" ของฟอร์ม
-// แก้ไขสินค้าตอนนี้แสดง**โมเดลทั้งหมดในระบบ** (ดึงจาก GET /admin/models ตัว
-// เดียวกับหน้า "โมเดลสินค้า" รวม) แล้วให้ติ๊ก checkbox เลือกว่าสินค้าตัวนี้จะ
-// "ใช้" โมเดลไหนบ้าง — แก้ไขชื่อ/ราคา/สต็อก/สเปคย่อยของโมเดลไม่ได้จากตรงนี้
-// อีกต่อไป (ย้ายไปทำที่หน้า "โมเดลสินค้า" รวม, AdminModelsPage.vue เท่านั้น)
+// โมเดลทั้งระบบ (คลังกลาง) — ฟอร์มนี้แค่ติ๊กว่าสินค้าใช้โมเดลไหน แก้โมเดลที่หน้าโมเดลสินค้า
 interface CatalogModel {
   model_id: string
   model_name: string
@@ -56,14 +44,13 @@ interface CatalogModel {
   product: { product_id: string; product_name: string } | null
 }
 const allModels = ref<CatalogModel[]>([])
-// โมเดลที่ติ๊กไว้สำหรับสินค้าตัวนี้ — ส่งเป็น model_ids ตอนบันทึกทั้งฟอร์ม
-// (แพทเทิร์นเดียวกับ gallery/tags — เก็บ state ไว้ในเครื่อง ยังไม่ยิง API จน
-// กว่าจะกด "อัพเดต")
+// โมเดลที่ติ๊กไว้ ส่งเป็น model_ids ตอนบันทึก
 const selectedModelIds = ref<Set<string>>(new Set())
+// ติ๊ก/ถอนติ๊กโมเดล
 function toggleModelSelected(modelId: string) {
   if (selectedModelIds.value.has(modelId)) selectedModelIds.value.delete(modelId)
   else selectedModelIds.value.add(modelId)
-  // Set ไม่ trigger reactivity เองตอนแก้ผ่าน .add()/.delete() ต้อง reassign
+  // Set ต้อง reassign ถึงจะ reactive
   selectedModelIds.value = new Set(selectedModelIds.value)
 }
 
@@ -85,9 +72,7 @@ function goToModelPage(page: number) {
   modelPage.value = Math.min(Math.max(1, page), modelTotalPages.value)
 }
 
-// ตัวเลือกสินค้า (tbl_item_option) — ของเสริมที่ซื้อเพิ่มได้ เช่น SD Card
-// คลังกลางทั้งระบบเหมือนโมเดล แต่ "ใช้ร่วมกันได้" หลายสินค้าพร้อมกัน ติ๊กที่นี่
-// ไม่แย่งมาจากสินค้าอื่น — จัดการชื่อ/ราคาที่หน้า "ตัวเลือกสินค้า" ในเมนูสินค้า
+// ตัวเลือกเสริมทั้งระบบ — ติ๊กได้หลายสินค้าพร้อมกัน ไม่แย่ง
 interface CatalogOption {
   option_id: string
   option_name: string
@@ -108,11 +93,7 @@ const filteredOptions = computed(() => {
   return allOptions.value.filter((o) => o.option_name?.toLowerCase().includes(term))
 })
 
-// Tabbed layout (added 2026-08-27) mirrors the reference e-commerce admin's
-// product-edit form (dtcshops.com seller center — ข้อมูลทั่วไป / รายละเอียด /
-// โมเดลสินค้า / ตัวเลือกสินค้า / รูปภาพหรือวีดีโอ) that the user asked to match.
-// v-show (not v-if) on each panel below, so switching tabs never loses
-// anything already typed into a hidden panel's inputs.
+// แท็บใช้ v-show ไม่ใช่ v-if — สลับแท็บแล้วค่าที่พิมพ์ไม่หาย
 type TabKey = 'general' | 'details' | 'models' | 'addons' | 'options' | 'media'
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'general', label: 'ข้อมูลทั่วไป' },
@@ -126,30 +107,17 @@ const activeTab = ref<TabKey>('general')
 
 const form = reactive(emptyForm())
 const categories = ref<Category[]>([])
-// ชื่อคุณสมบัติที่มีอยู่แล้วทั้งระบบ — ส่งให้ AttributeNameCombobox ใช้ทำ dropdown
-// แนะนำชื่อ (ทั้งระดับสินค้าและระดับโมเดล) เลือกจากของเดิมได้ หรือจะพิมพ์ชื่อใหม่ที่
-// ไม่มีในลิสต์ก็ยังทำได้ตามปกติ (auto-create ตอนบันทึกเหมือนเดิม)
+// ชื่อคุณสมบัติทั้งระบบ ให้ AttributeNameCombobox แนะนำ (พิมพ์ชื่อใหม่ = สร้างตอนบันทึก)
 const allAttributeNames = ref<string[]>([])
 const attrValues = ref<Record<number, string>>({})
-// Specs this product already has values for — the edit form only shows
-// specs the product already has, plus whatever new ones the admin types in.
+// สเปคที่สินค้ามีค่าอยู่แล้ว
 const specFields = ref<Attribute[]>([])
 const newSpecs = ref<{ name: string; value: string }[]>([])
-// ภาพสินค้า — เปลี่ยนเป็น 2 ช่องอัปโหลดแยกกันตามภาพอ้างอิง (2026-09-03) —
-// "ภาพสินค้าหลัก" (masterImage) กับ "ภาพสินค้า" (subImages, สูงสุด 9 รูป,
-// ลากจัดลำดับได้) เป็นคนละ state กันตรงๆ ในฝั่งแอดมิน แต่ยัง map ไปที่
-// Product_Gallery ตัวเดียวกันตอนส่งข้อมูล (`[masterImage, ...subImages]`
-// ตำแหน่ง 0 = ภาพหลัก) — payload/backend (galleryToImageColumns() ใน
-// routes/admin.js) ไม่ต้องแก้เลย ยังคง map เป็น itm_image_master/
-// itm_image_sub1..9 เหมือนเดิมทุกประการ, ถ้าไม่ได้ตั้งภาพหลักไว้แต่มีภาพ
-// สินค้าอยู่ backend เดิมจะ compact ให้ภาพแรกในลิสต์ขึ้นเป็นภาพหลักแทน
-// อัตโนมัติอยู่แล้ว (ไม่ต้องมี fallback logic ฝั่ง frontend เพิ่ม)
+// ภาพหลัก + ภาพย่อย 9 รูป — ส่งเป็น gallery [ภาพหลัก, ...ภาพย่อย]
 const masterImage = ref<string | null>(null)
 const subImages = ref<string[]>([])
 const MAX_SUB_IMAGES = 8
-// Product_Tag names — plain strings, chip-style input (type + Enter). A
-// brand-new name gets auto-created in Tag on save, same convention as a
-// brand-new spec name in newSpecs above.
+// แท็ก (พิมพ์แล้ว Enter)
 const tags = ref<string[]>([])
 const tagInput = ref('')
 const loading = ref(true)
@@ -157,13 +125,12 @@ const saving = ref(false)
 const uploadingMaster = ref(false)
 const uploadingSub = ref(false)
 
-// `sale_start_date`/`sale_end_date` come back from the API as full ISO
-// timestamps (Prisma DateTime) — <input type="date"> needs just the
-// YYYY-MM-DD part, or it renders blank.
+// <input type="date"> ต้องการ YYYY-MM-DD แต่ API คืน ISO เต็ม
 function toDateInputValue(iso: string | null | undefined): string {
   return iso ? String(iso).slice(0, 10) : ''
 }
 
+// โหลดข้อมูลสินค้า (โหมดแก้) + โมเดล/ตัวเลือก/ชื่อคุณสมบัติทั้งระบบ
 async function load() {
   loading.value = true
   activeTab.value = 'general'
@@ -226,12 +193,9 @@ async function load() {
         subImages.value = rawGallery.slice(1)
       }
       tags.value = p.tags ?? []
-      // ติ๊ก checkbox ล่วงหน้าตามโมเดลที่สินค้านี้ "มี" อยู่แล้วตอนนี้ (จาก
-      // itm_model_code ของมันเอง) — ตัวเลือกทั้งหมดมาจาก allModels ที่โหลดมา
-      // แยกต่างหากด้านบน (คลังกลาง ไม่ใช่ p.product_model)
+      // ติ๊กโมเดลที่สินค้านี้มีอยู่แล้ว
       interface RawModel { model_id: string }
       selectedModelIds.value = new Set((p.product_model ?? []).map((v: RawModel) => v.model_id))
-      // ตัวเลือกสินค้าที่สินค้านี้ใช้อยู่ (จาก itm_option_code ของมันเอง)
       selectedOptionIds.value = new Set((p.option_ids ?? []) as string[])
     }
   } catch {
@@ -244,6 +208,7 @@ async function load() {
 load()
 watch(() => route.params.id, load)
 
+// อัปโหลดภาพหลัก
 async function handleMasterFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   ;(e.target as HTMLInputElement).value = ''
@@ -260,6 +225,7 @@ async function handleMasterFile(e: Event) {
   }
 }
 
+// อัปโหลดภาพย่อย
 async function handleSubImageFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   ;(e.target as HTMLInputElement).value = ''
@@ -280,8 +246,7 @@ async function handleSubImageFile(e: Event) {
   }
 }
 
-// ยืนยันก่อนลบรูปจริง (2026-09-03) — รูปที่ลบไปยังไม่หายจากเซิร์ฟเวอร์จนกว่า
-// จะกด "อัพเดต" ก็จริง แต่ถ้าเผลอกดลบแล้วบันทึกไปโดยไม่ทันสังเกต รูปจะหายจริง
+// ยืนยันก่อนลบรูป
 type PendingImageDelete = { kind: 'master' } | { kind: 'sub'; index: number }
 const pendingImageDelete = ref<PendingImageDelete | null>(null)
 function confirmImageDelete() {
@@ -291,9 +256,7 @@ function confirmImageDelete() {
   pendingImageDelete.value = null
 }
 
-// ลากจัดลำดับรูป "ภาพสินค้า" ด้วย native HTML5 drag events (แพทเทิร์นเดียวกับ
-// หน้านำเข้า Excel เดิมที่เคยใช้วิธีนี้แทนไลบรารีภายนอก) — คลิกค้างที่ไอคอน ≡
-// แล้วลากไปวางที่แถวปลายทาง
+// ลากจัดลำดับภาพย่อย (HTML5 drag)
 const draggedSubIndex = ref<number | null>(null)
 function onSubImageDragStart(index: number) {
   draggedSubIndex.value = index
@@ -315,10 +278,9 @@ function removeTag(index: number) {
   tags.value.splice(index, 1)
 }
 
+// บันทึกสินค้า (PUT เป็น full-replace ต้องส่งครบทั้งก้อน)
 async function handleSubmit() {
-  // SKU is NOT required — most real production products (19 of 20) have
-  // none set at all, so requiring it here would make this admin panel
-  // unable to save the majority of real data.
+  // SKU ไม่บังคับ — สินค้าจริงส่วนใหญ่ไม่มี
   if (!form.product_name.trim()) {
     toast.error('กรุณากรอกข้อมูลที่จำเป็นให้ครบ')
     return
@@ -345,9 +307,7 @@ async function handleSubmit() {
     seo_title: form.seo_title,
     seo_description: form.seo_description,
     video_url: form.video_url,
-    // ตำแหน่ง 0 = ภาพหลัก เสมอ (คง null ไว้ตรงนั้นถ้ายังไม่ได้ตั้ง ไม่ตัดทิ้ง
-    // เอง — galleryToImageColumns() ฝั่ง backend จะ compact ให้ภาพแรกในลิสต์
-    // ขึ้นเป็นภาพหลักแทนอัตโนมัติถ้าไม่มีภาพหลักจริงๆ)
+    // ตำแหน่ง 0 = ภาพหลักเสมอ (ว่างก็คงไว้)
     gallery: [masterImage.value, ...subImages.value],
     tags: tags.value,
     attributes: [
@@ -356,11 +316,7 @@ async function handleSubmit() {
         .filter((s) => s.name.trim() && s.value.trim())
         .map((s) => ({ attribute_name: s.name.trim(), value: s.value.trim() })),
     ],
-    // โมเดลสินค้าที่ติ๊กเลือกไว้ — shared catalog ทั้งระบบ (ดูคอมเมนต์บน
-    // allModels/selectedModelIds ด้านบน และ reassignProductModels() ฝั่ง
-    // backend) ติ๊กโมเดลที่ตอนนี้เป็นของสินค้าอื่น = แย่งมาเป็นของสินค้านี้แทน
     model_ids: Array.from(selectedModelIds.value),
-    // ตัวเลือกสินค้าที่ติ๊กไว้ — ใช้ร่วมกันได้ ไม่แย่งจากสินค้าอื่น (ดู normalizeOptionIds() ฝั่ง backend)
     option_ids: Array.from(selectedOptionIds.value),
   }
   try {
@@ -410,7 +366,6 @@ async function handleSubmit() {
       </div>
 
       <div class="bg-white border rounded-xl overflow-hidden mt-4">
-      <!-- Tabs — mirrors the reference site's product-edit form layout. -->
       <div class="flex border-b overflow-x-auto">
         <button
           v-for="tab in TABS"
@@ -427,7 +382,6 @@ async function handleSubmit() {
       </div>
 
       <div class="p-5 space-y-4">
-        <!-- ===== ข้อมูลทั่วไป ===== -->
         <div v-show="activeTab === 'general'" class="space-y-4">
           <label class="text-sm space-y-1">
             <span class="text-gray-600">ชื่อสินค้า <span class="text-red-600">*</span></span>
@@ -542,7 +496,6 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- ===== รายละเอียด ===== -->
         <div v-show="activeTab === 'details'" class="space-y-4">
           <label class="text-sm space-y-1 block">
             <span class="text-gray-600">รายละเอียดสินค้า</span>
@@ -550,7 +503,6 @@ async function handleSubmit() {
           </label>
         </div>
 
-        <!-- ===== โมเดลสินค้า ===== -->
         <div v-show="activeTab === 'models'" class="space-y-3">
           <p class="text-xs text-gray-500">
             โมเดลสินค้าเป็นคลังกลางของทั้งระบบ (จัดการชื่อ/ราคา/สต็อก/คุณสมบัติย่อยได้ที่หน้า "โมเดลสินค้า" ในเมนูสินค้า)
@@ -609,7 +561,6 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- ===== ตัวเลือกสินค้า (ของเสริมที่ซื้อเพิ่มได้) ===== -->
         <div v-show="activeTab === 'addons'" class="space-y-3">
           <p class="text-xs text-gray-500">
             ของเสริมที่ลูกค้าเลือกซื้อเพิ่มพร้อมสินค้านี้ได้ (เช่น SD Card, เซ็นเซอร์วัดน้ำมัน) —
@@ -652,7 +603,6 @@ async function handleSubmit() {
           </table>
         </div>
 
-        <!-- ===== ตัวเลือกสินค้า (คุณสมบัติ/สเปคที่ใช้ร่วมกันทุกโมเดล) ===== -->
         <div v-show="activeTab === 'options'" class="space-y-3">
           <div>
             <h2 class="text-sm font-medium text-gray-700">คุณสมบัติ</h2>
@@ -663,8 +613,7 @@ async function handleSubmit() {
             </p>
           </div>
 
-          <!-- items-start: ช่องที่ค่ายาวจะสูงขึ้นเอง ถ้าปล่อยให้ยืดเท่ากันทั้งแถว
-               (stretch เป็นค่าเริ่มต้นของ grid) ช่องสั้นๆ ข้างๆ จะโดนดึงสูงตามไปด้วย -->
+          <!-- items-start: ไม่ให้ช่องสั้นถูกยืดตามช่องที่ค่ายาว -->
           <div v-if="specFields.length > 0" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             <label v-for="a in specFields" :key="a.attribute_id" class="text-sm space-y-1">
               <span class="text-gray-600">{{ a.attribute_name }}</span>
@@ -672,14 +621,9 @@ async function handleSubmit() {
             </label>
           </div>
 
-          <!-- New spec rows — typing a name here that doesn't already exist as
-               an Attribute creates it on save, same as an unrecognised Excel
-               import column would. -->
+          <!-- แถวเพิ่มสเปคใหม่ — ชื่อที่ยังไม่มีถูกสร้างตอนบันทึก -->
           <div v-if="newSpecs.length > 0" class="space-y-2">
-            <!-- หัวคอลัมน์ — สองช่องนี้เดิมบอกว่าอันไหนคืออะไรด้วย placeholder
-                 อย่างเดียว ซึ่งหายไปทันทีที่พิมพ์ตัวแรก เหลือกล่องหน้าตาเหมือน
-                 กันสองใบให้เดาเอง (ช่องคุณสมบัติที่มีอยู่แล้วด้านบนมีป้ายชื่อ
-                 กำกับทุกช่องอยู่แล้ว แถวที่เพิ่มใหม่ควรมีเหมือนกัน) -->
+            <!-- หัวคอลัมน์ถาวร — placeholder หายตั้งแต่พิมพ์ตัวแรก -->
             <div class="flex items-center gap-2 text-xs text-gray-500">
               <span class="flex-1">ชื่อคุณสมบัติ</span>
               <span class="flex-1">ค่า</span>
@@ -700,11 +644,7 @@ async function handleSubmit() {
           </button>
         </div>
 
-        <!-- ===== รูปภาพหรือวีดีโอ ===== -->
         <div v-show="activeTab === 'media'" class="space-y-6">
-          <!-- ภาพสินค้าหลัก — ช่องอัปโหลดแยกต่างหากจาก "ภาพสินค้า" ด้านล่าง
-               ตามภาพอ้างอิง (2026-09-03) ไม่ใช่แค่รูปแรกของแกลเลอรีที่ใช้ร่วม
-               กันเหมือนเดิมอีกต่อไป — ดูคอมเมนต์บน masterImage/subImages ด้านบน -->
           <div class="space-y-2">
             <span class="text-sm text-gray-600 block">ภาพสินค้าหลัก</span>
             <div class="w-36 h-36 rounded-lg border overflow-hidden relative group">
@@ -729,9 +669,6 @@ async function handleSubmit() {
             </div>
           </div>
 
-          <!-- ภาพสินค้า — แกลเลอรีย่อยแยกจากภาพหลัก สูงสุด 9 รูป ลากไอคอน ≡
-               จัดลำดับได้ (native HTML5 drag events — ดู onSubImageDragStart/
-               onSubImageDrop) -->
           <div class="space-y-2 pt-2 border-t">
             <div class="pt-2 flex items-center gap-3">
               <div>

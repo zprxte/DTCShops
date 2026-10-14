@@ -1,3 +1,4 @@
+// เรียก backend API ทุกเส้นที่แอปใช้ แล้วแปลงเป็น model
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import '../models/product_detail.dart';
 import '../models/product.dart';
 import '../models/shop.dart';
 
+// สินค้า 1 หน้า + จำนวนทั้งหมด
 class ProductPage {
   final List<Product> products;
   final int page;
@@ -23,8 +25,7 @@ class ProductPage {
   });
 }
 
-// คำแนะนำ 1 รายการ — ใช้ได้ทั้ง autocomplete และ "คุณหมายถึง…?"
-// มี productId เพื่อให้กดแล้วเข้าหน้าสินค้าได้เลย ไม่ต้องพิมพ์ค้นใหม่
+// คำแนะนำ 1 รายการ (autocomplete / คุณหมายถึง…?) มี productId ให้กดเข้าหน้าสินค้าได้
 class SearchSuggestion {
   final String productId;
   final String productName;
@@ -44,16 +45,17 @@ class SearchSuggestion {
       );
 }
 
+// ผลค้นหา + คำที่ระบบใช้ค้นจริง + คำแนะนำ
 class SearchResult {
   final List<Product> products;
   final int page;
   final int totalPages;
   final int total;
 
-  // คำที่ระบบใช้ค้นจริงเมื่อกู้คำที่พิมพ์ผิดแป้นให้ (null = ใช้คำที่ผู้ใช้พิมพ์)
+  // คำที่ใช้ค้นจริงเมื่อกู้แป้นให้ (null = คำที่พิมพ์)
   final String? searchedAs;
 
-  // มีค่าเฉพาะตอนค้นไม่เจอ — เอาไปทำ "คุณหมายถึง…?"
+  // มีค่าเฉพาะตอนค้นไม่เจอ
   final List<SearchSuggestion> suggestions;
 
   const SearchResult({
@@ -89,20 +91,17 @@ class ShopPage {
 }
 
 class ApiService {
-  // ตัวกลางเรียก GET ทุกเส้นทาง — รวมการเช็ค status code ไว้ที่เดียว
-  // จะได้ไม่ต้องเขียนซ้ำทุกเมธอด
+  // GET แล้วคืน JSON (เช็ค status ที่เดียว)
   Future<dynamic> _getJson(String path) async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}$path'));
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode} จาก $path');
     }
-    // ต้องอ่านเป็น bodyBytes แล้ว decode เป็น UTF-8 เอง — response.body ใช้
-    // latin1 เมื่อ header ไม่ได้ระบุ charset ทำให้ชื่อสินค้าภาษาไทยเพี้ยน
+    // ต้อง decode UTF-8 เอง — response.body ใช้ latin1 เมื่อไม่ระบุ charset ไทยจะเพี้ยน
     return jsonDecode(utf8.decode(response.bodyBytes));
   }
 
-  // ข้อมูลเต็มของสินค้าที่เลือกไว้ในตะกร้าเปรียบเทียบ (สเปคครบทุกหัวข้อ)
-  // ใช้ /products/compare ไม่ใช่ /products/:id เพราะตัวนั้นนับยอดเข้าชมสินค้า
+  // ข้อมูลเต็มของสินค้าในตะกร้าเปรียบเทียบ (ใช้ /products/compare เพราะ /:id นับยอดเข้าชม)
   Future<List<CompareProduct>> fetchCompare(List<String> productIds) async {
     if (productIds.isEmpty) return [];
     final ids = productIds.map(Uri.encodeComponent).join(',');
@@ -113,8 +112,7 @@ class ApiService {
         .toList();
   }
 
-  // ค้นหาสินค้า — ฝั่ง backend จัดการ fuzzy / พิมพ์ผิดแป้น / Caps Lock ให้หมด
-  // แอปแค่ส่งคำที่ผู้ใช้พิมพ์ไปตรงๆ ไม่ต้องแปลงอะไรก่อน
+  // ค้นหาสินค้า — backend จัดการพิมพ์ผิด/ผิดแป้นให้หมด
   Future<SearchResult> searchProducts(
     String searchword, {
     int page = 1,
@@ -125,7 +123,6 @@ class ApiService {
   }) async {
     final q = Uri.encodeComponent(searchword);
     final query = StringBuffer('?searchword=$q&page=$page&limit=$limit');
-    // /search รับตัวกรองชุดเดียวกับ /products — กรองผลการค้นหาได้เหมือนเว็บ
     if (categoryIds.isNotEmpty) {
       final ids = categoryIds.map(Uri.encodeComponent).join(',');
       query.write('&category_ids=$ids');
@@ -150,7 +147,7 @@ class ApiService {
     );
   }
 
-  // คำแนะนำระหว่างพิมพ์ (ต้อง 2 ตัวอักษรขึ้นไป ไม่งั้น backend ตอบว่าง)
+  // คำแนะนำระหว่างพิมพ์ (≥ 2 ตัวอักษร)
   Future<List<SearchSuggestion>> fetchAutocomplete(String searchword) async {
     if (searchword.trim().length < 2) return [];
     final q = Uri.encodeComponent(searchword.trim());
@@ -162,8 +159,7 @@ class ApiService {
         .toList();
   }
 
-  // รายการตัวกรองที่มีจริงในฐานข้อมูล — backend คำนวณให้ทุกครั้ง
-  // ไม่ได้ hardcode ฝั่งแอป เพิ่มสินค้า/แท็กใหม่แล้วตัวเลือกโผล่เอง
+  // ตัวเลือกตัวกรองที่มีจริงใน DB
   Future<FilterOptions> fetchFilters() async {
     final json = await _getJson('/products/filters') as Map<String, dynamic>;
     return FilterOptions(
@@ -176,6 +172,7 @@ class ApiService {
     );
   }
 
+  // รายการสินค้า + ตัวกรอง + เรียง + แบ่งหน้า
   Future<ProductPage> fetchProducts({
     int page = 1,
     int limit = 10,
@@ -186,7 +183,6 @@ class ApiService {
   }) async {
     final query = StringBuffer('?page=$page&limit=$limit');
     if (categoryId != null) query.write('&category_id=$categoryId');
-    // ติ๊กได้หลายหมวด/หลายแท็ก backend รับเป็นรหัสคอมม่าคั่น
     if (categoryIds.isNotEmpty) {
       final ids = categoryIds.map(Uri.encodeComponent).join(',');
       query.write('&category_ids=$ids');
@@ -209,8 +205,7 @@ class ApiService {
     );
   }
 
-  // ข้อมูลเต็มของสินค้า 1 ตัว — endpoint นี้นับยอดเข้าชมให้ด้วย
-  // จึงเรียกเฉพาะตอนเปิดหน้ารายละเอียดจริงๆ เท่านั้น
+  // ข้อมูลเต็มของสินค้า 1 ตัว (นับยอดเข้าชม — เรียกเฉพาะตอนเปิดหน้ารายละเอียด)
   Future<ProductDetail> fetchProductDetail(String productId) async {
     final json = await _getJson(
       '/products/${Uri.encodeComponent(productId)}',
@@ -218,6 +213,7 @@ class ApiService {
     return ProductDetail.fromJson(json);
   }
 
+  // หมวดหมู่ทั้งหมด
   Future<List<Category>> fetchCategories() async {
     final data = await _getJson('/categories') as List<dynamic>;
     return data
@@ -225,6 +221,7 @@ class ApiService {
         .toList();
   }
 
+  // สาขาทั้งหมด
   Future<List<Shop>> fetchShops() async {
     final data = await _getJson('/shops') as List<dynamic>;
     return data

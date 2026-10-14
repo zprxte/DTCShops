@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// กล่องติดต่อสั่งซื้อ (ข้อมูลติดต่อจาก footer)
 import { onMounted, ref } from 'vue'
 import { footerAPI } from '../../services/api'
 import { useLanguage } from '../../language/useLanguage'

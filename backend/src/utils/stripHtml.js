@@ -1,3 +1,4 @@
+// HTML → ข้อความล้วน (รายละเอียดสินค้าในฟอร์มแอดมิน / ไฟล์ Excel)
 function stripHtml(html) {
   if (!html) return html
 

@@ -7,10 +7,7 @@ import { toast } from '../../stores/toast'
 import AttributeNameCombobox from '../../components/common/AttributeNameCombobox.vue'
 import AutoGrowTextarea from '../../components/common/AutoGrowTextarea.vue'
 
-// เพิ่ม/แก้ไขโมเดลสินค้า — หน้าฟอร์มเดี่ยว (ไม่ใช่ popup อีกต่อไป) ตาม
-// แพทเทิร์นเดียวกับ AdminBannerFormPage.vue — component เดียวรองรับทั้ง
-// สร้าง/แก้ไข (isNew = !route.params.id) — ต่างจาก popup เดิมตรงที่แก้ไขได้
-// ทั้งชื่อโมเดลและสินค้าที่ผูกอยู่ด้วย (ของเดิมแก้ได้แค่ราคา/สต็อก/สเปคย่อย)
+// ฟอร์มเพิ่ม/แก้ไขโมเดล: ชื่อ ราคาเพิ่ม สต็อก สินค้าเจ้าของ และสเปคเฉพาะโมเดล (isNew = ไม่มี :id)
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +35,7 @@ const allProducts = ref<ProductOption[]>([])
 const productSearch = ref('')
 const allAttributeNames = ref<string[]>([])
 
+// โหลดโมเดล + รายชื่อสินค้า + ชื่อคุณสมบัติ
 async function load() {
   loading.value = true
   try {
@@ -81,6 +79,7 @@ function removeAttribute(index: number) {
   form.attributes.splice(index, 1)
 }
 
+// บันทึกโมเดล
 async function handleSubmit() {
   if (!selectedProductId.value) {
     toast.error('กรุณาเลือกสินค้า')
@@ -176,8 +175,7 @@ async function handleSubmit() {
           <span class="text-sm text-gray-600 pt-2 sm:text-right">คุณสมบัติย่อยเฉพาะโมเดลนี้</span>
           <div class="space-y-2">
             <p class="text-xs text-gray-500">ทับค่าที่ใช้ร่วมกันในสินค้าแม่ ถ้าตั้งชื่อซ้ำกัน</p>
-            <!-- หัวคอลัมน์ — เหตุผลเดียวกับแถวเพิ่มคุณสมบัติในฟอร์มสินค้า:
-                 placeholder หายตั้งแต่พิมพ์ตัวแรก ป้ายชื่อต้องอยู่ถาวร -->
+            <!-- หัวคอลัมน์ถาวร — placeholder หายตั้งแต่พิมพ์ตัวแรก -->
             <div v-if="form.attributes.length > 0" class="flex items-center gap-2 text-xs text-gray-500">
               <span class="flex-1">ชื่อสเปค</span>
               <span class="flex-1">ค่า</span>

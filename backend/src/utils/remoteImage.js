@@ -1,20 +1,13 @@
-/**
- * ดาวน์โหลดรูปจากลิงก์ภายนอก (คอลัมน์ product_image ของไฟล์นำเข้า Excel, 25 ก.ย. 2026)
- *
- * ผู้ใช้เลือกให้ "ดึงรูปมาเก็บในระบบ" แทนการเก็บ URL ตรงๆ — ตรงกับที่ตัดสินใจเลิก hotlink
- * เว็บต้นแบบไปแล้ว (รูปอยู่ใน database/uploads/ เหมือนรูปที่อัปโหลดผ่านฟอร์ม)
- *
- * backend เป็นคนยิงคำขอ จึงต้องกันไม่ให้ลิงก์ในไฟล์พาไปเครือข่ายภายใน (SSRF) เช่น
- * http://db:5432 หรือ http://169.254.169.254 — ตรวจ IP ปลายทางทุกครั้งรวมทุกทอดของ redirect
- */
+// ดาวน์โหลดรูปจากลิงก์ในไฟล์ Excel — กัน SSRF: ตรวจ IP ปลายทางทุกทอดของ redirect ไม่ให้ไปเครือข่ายภายใน
 const dns = require('dns').promises
 const net = require('net')
 
-const MAX_BYTES = 5 * 1024 * 1024 // เท่ากับเพดานของ POST /admin/upload/image
+const MAX_BYTES = 5 * 1024 * 1024 // เท่าเพดานของ POST /admin/upload/image
 const TIMEOUT_MS = 15000
 const MAX_REDIRECTS = 3
 const EXT_BY_TYPE = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' }
 
+// IP วงภายใน/สงวนไหม
 function isPrivateIp(ip) {
   if (net.isIPv4(ip)) {
     const [a, b] = ip.split('.').map(Number)
@@ -26,6 +19,7 @@ function isPrivateIp(ip) {
   return v6 === '::1' || v6 === '::' || v6.startsWith('fc') || v6.startsWith('fd') || v6.startsWith('fe80')
 }
 
+// throw ถ้าโดเมนชี้ไป IP ภายใน
 async function assertPublicHost(url) {
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('รองรับเฉพาะลิงก์ http/https')
   const host = url.hostname.replace(/^\[|\]$/g, '')
@@ -45,7 +39,7 @@ async function readLimited(res) {
   return Buffer.concat(chunks)
 }
 
-/** ดาวน์โหลดรูป → { buffer, ext } หรือ throw Error ที่มีข้อความภาษาไทยพร้อมแสดง */
+// ดาวน์โหลดรูป → { buffer, ext } หรือ throw ข้อความไทยพร้อมแสดง
 async function fetchImage(rawUrl) {
   let url
   try {
@@ -74,11 +68,11 @@ async function fetchImage(rawUrl) {
   throw new Error('ลิงก์ redirect หลายทอดเกินไป')
 }
 
-// ผลตรวจจำไว้ 10 นาที — /plan ถูกเรียกทุกครั้งที่แอดมินเลือกหัวข้อสเปค ไม่ควรโหลดรูปซ้ำทุกรอบ
+// จำผลตรวจ 10 นาที — /plan ถูกเรียกซ้ำทุกครั้งที่แอดมินเลือกหัวข้อ
 const checkCache = new Map()
 const CHECK_TTL_MS = 10 * 60 * 1000
 
-/** ลองโหลดจริงแล้วทิ้งข้อมูล → { ok, error } */
+// ลองโหลดจริงแล้วทิ้งข้อมูล → { ok, error }
 async function checkImageUrl(url) {
   const hit = checkCache.get(url)
   if (hit && Date.now() - hit.at < CHECK_TTL_MS) return hit.result

@@ -1,3 +1,4 @@
+// API หลังบ้าน (/api/admin/*) — ทุกเส้นต้องมี JWT · ทำความสะอาด body และล้างแคชให้ทุกครั้งที่เขียน
 const express = require('express')
 const router = express.Router()
 const multer = require('multer')
@@ -11,30 +12,21 @@ const { cleanText, safeUrl, sanitizeRichText, toPage, toLimit } = require('../ut
 const { clearAll: clearPublicCache } = require('../utils/cache')
 const { stripHtml } = require('../utils/stripHtml')
 const prisma = new PrismaClient()
-//ใช้ authMiddleware กับทุก router
 router.use(authMiddleware)
 
-// ===== ทำความสะอาดข้อมูลขาเข้าก่อนถึง handler (Week 15 — input sanitization) =====
-// จุดเดียวคุมทุก endpoint ที่เขียนข้อมูล (มี 30 กว่าตัว) แทนที่จะไล่ใส่ทีละ handler
-// แล้วมีวันหลุดจุดใดจุดหนึ่ง:
-//   • ทุกข้อความ — ตัดอักขระควบคุม/ช่องว่างหัวท้าย + จำกัดความยาว
-//   • ฟิลด์ที่เป็นลิงก์/รูป — ต้องเป็น http(s)/mailto/tel หรือ path ภายในระบบ
-//     (/uploads/...) เท่านั้น ค่าอย่าง `javascript:alert(1)` กลายเป็น null เพราะ
-//     ฟิลด์พวกนี้ถูกเอาไปใส่ :href / <iframe src> ตรงๆ บนหน้าสินค้าฝั่งลูกค้า
-//     ซึ่ง Vue ไม่ได้กันให้ (Vue กันแค่ข้อความ ไม่กัน URL scheme)
-//   • ฟิลด์รายละเอียดที่ยอมให้มี HTML — ตัดเฉพาะแท็ก/attribute ที่รันโค้ดได้
+// ทำความสะอาด body ทุกคำขอที่จุดเดียว: ข้อความตัดอักขระควบคุม · ลิงก์รับเฉพาะ http(s)/mailto/tel/path · HTML ตัดแท็กอันตราย
 const URL_KEYS = /(url|link|thumbnail|icon|end_point)$/i
 const RICH_TEXT_KEYS = /(description|information|content|detail)$/i
 const MAX_TEXT_LENGTH = 2000
 
+// ทำความสะอาดค่าตามชนิดฟิลด์ (ดูจากชื่อ key) — วนเข้าไปในอาร์เรย์/อ็อบเจ็กต์ด้วย
 function sanitizeValue(key, value) {
   if (typeof value === 'string') {
     if (key === 'gallery' || URL_KEYS.test(key) || /image/i.test(key)) return safeUrl(value)
     if (RICH_TEXT_KEYS.test(key)) return sanitizeRichText(value)
     return cleanText(value, MAX_TEXT_LENGTH)
   }
-  // อาร์เรย์ส่งชื่อ key เดิมลงไปด้วย เพื่อให้ gallery: [path, path] ถูกมองเป็นลิงก์
-  // เหมือนกับตอนเป็นค่าเดี่ยว
+  // อาร์เรย์ส่งชื่อ key เดิมลงไป ให้ gallery: [path] ถูกตรวจแบบลิงก์
   if (Array.isArray(value)) return value.map((item) => sanitizeValue(key, item))
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, sanitizeValue(k, v)]))
@@ -49,10 +41,7 @@ router.use((req, _res, next) => {
   next()
 })
 
-// การเขียนข้อมูลทุกครั้งล้างแคช response ฝั่ง public ทิ้ง (utils/cache.js) — ไม่งั้น
-// แก้หมวดหมู่/แบนเนอร์/สาขา/footer แล้วต้องรอแคชหมดอายุถึงจะเห็นของใหม่ ล้างทั้งก้อน
-// ไปเลยเพราะของที่แคชไว้มีไม่กี่ชิ้นและโหลดใหม่ถูกมาก ไม่ต้องมานั่งไล่ว่า endpoint
-// ไหนกระทบแคชตัวไหนบ้าง (แคชผิดชุดแล้วดีบักยากกว่าโหลดใหม่เยอะ)
+// เขียนข้อมูลสำเร็จ = ล้างแคช public ทั้งหมด (ของที่แคชมีไม่กี่ชิ้น ล้างทั้งก้อนง่ายกว่าไล่ทีละตัว)
 router.use((req, res, next) => {
   if (req.method === 'GET') return next()
   res.on('finish', () => {
@@ -61,17 +50,10 @@ router.use((req, res, next) => {
   next()
 })
 
-// นำเข้าสินค้า/สเปคจาก Excel — แยกไฟล์เพราะยาว แต่ mount ตรงนี้ให้ผ่าน JWT/sanitize/ล้างแคชด้านบน
+// นำเข้า Excel — mount ตรงนี้ให้ผ่าน JWT/sanitize/ล้างแคชด้านบน
 router.use('/import', require('./adminImport'))
 
-// Fuzzy Search (fuse.js) — ระบบค้นหาฝั่งแอดมิน แยกคนละตัวกับฝั่ง public
-// (ฝั่ง public อยู่ที่ routes/search.js ซึ่งมีชั้นตัดคำไทย/คำพ้อง/AND/จัดอันดับครบ
-//  ส่วนตรงนี้จงใจให้เรียบง่าย เพราะแอดมินรู้ชื่อสินค้าที่ตัวเองหาอยู่แล้ว)
-//
-// ค้นด้วย fuse.js (ทนคำพิมพ์ผิด/ใกล้เคียง) เทียบชื่อสินค้าเพียงฟิลด์เดียว —
-// ใช้แค่ที่นี่ (ช่องค้นหาในหน้า "สินค้าของฉัน") จึงย้ายมาอยู่ในไฟล์นี้ตรงๆ
-// แทนที่จะ import จาก search.js (ตัวค้นหาหลักฝั่ง public มี fuse config ของ
-// ตัวเองแยกต่างหาก ไม่ได้เรียกใช้ฟังก์ชันนี้อยู่แล้ว)
+// ค้นชื่อสินค้าแบบทนพิมพ์ผิดในหน้า "สินค้าของฉัน" (เรียบง่ายกว่าตัวค้นหา public โดยตั้งใจ)
 function fuzzyFilterProducts(items, q) {
   const term = String(q).trim()
   if (!term) return items
@@ -82,19 +64,19 @@ function fuzzyFilterProducts(items, q) {
     .search(term)
     .map((r) => r.item.item)
 }
-//ฟังก์ชันสำหรับแปลงค่าวันที่
+// ข้อความ → Date (ว่าง/ผิด = null)
 function parseDateOrNull(value) {
   if (!value) return null
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? null : d
 }
-//ฟังก์ชันสำหรับแปลงค่าตัวเลข
+// ข้อความ → ตัวเลข (ว่าง/ผิด = null)
 function parseNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null
   const n = Number(value)
   return Number.isNaN(n) ? null : n
 }
-//ฟังก์ชันสำหรับสร้างรหัสสินค้าอัตโนมัติ
+// สร้างรหัสถัดไปจากรหัสมากสุดในตาราง (เช่น itm-0000085)
 async function nextCode(model, field, prefix, pad) {
   const rows = await prisma[model].findMany({ select: { [field]: true } })
   const re = new RegExp(`^${prefix}-?0*(\\d+)$`)
@@ -110,14 +92,7 @@ const nextItemTypeCode = () => nextCode('tbl_item_type', 'itm_type_code', 'PT', 
 const nextModelCode = () => nextCode('tbl_item_model', 'itm_model_code', 'MD', 7)
 const nextOptionCode = () => nextCode('tbl_item_option', 'itm_option_code', 'OP', 7)
 
-// 2026-09-02 — the product-detail page now routes on tbl_item.slug instead
-// of the bare itm_code (production already had a real, unique, readable
-// slug filled in for every active item — see utils/slug.ts's productSlug()
-// on the frontend). An admin who leaves the "Slug url" field blank gets one
-// generated from the product name here, the same way the old (pre-schema-
-// swap) admin form used to auto-fill it — except now it MUST be unique
-// (it's a routable URL, not just an SEO nicety any more), so a collision
-// gets "-2", "-3", ... appended until it's free.
+// slug ของสินค้า: ว่าง = สร้างจากชื่อ · ชนกับตัวอื่น = ต่อท้าย -2, -3, …
 function slugify(text) {
   return String(text || '')
     .trim()
@@ -126,6 +101,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '')
 }
 
+// หา slug ที่ไม่ซ้ำกับสินค้าอื่น
 async function resolveSlug(desiredSlug, productName, excludeItmCode) {
   const base = slugify(desiredSlug) || slugify(productName) || 'product'
   let candidate = base
@@ -138,9 +114,7 @@ async function resolveSlug(desiredSlug, productName, excludeItmCode) {
   }
 }
 
-// รูปเก็บที่ไหนตัดสินใน utils/imageStore.js — database/uploads/products/<ปี-เดือน>/ (Docker)
-// หรือ Supabase Storage (Vercel ดิสก์อ่านอย่างเดียว) · DB ได้ path /uploads/products/... แบบเดียวกันทั้งสองแบบ
-// multer ถือไฟล์ไว้ในหน่วยความจำ (≤5MB) แล้วส่งต่อให้ imageStore เขียนจริง
+// multer เก็บไฟล์ในหน่วยความจำ (≤ 5MB) แล้วให้ utils/imageStore.js เขียนจริง (ดิสก์หรือ Supabase)
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const IMAGE_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' }
 
@@ -149,13 +123,13 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, ALLOWED_IMAGE_TYPES.includes(file.mimetype)),
 })
-//อัพโหลดรูปสินค้า
+// POST /admin/upload/image
 router.post('/upload/image', (req, res, next) => {
   upload.single('image')(req, res, async (err) => {
     if (err) return res.status(400).json({ message: 'อัปโหลดรูปไม่สำเร็จ' })
     if (!req.file) return res.status(400).json({ message: 'ไฟล์ไม่ถูกต้อง (รองรับ jpeg/png/webp/gif ขนาดไม่เกิน 5MB)' })
     try {
-      // นามสกุลตามชนิดไฟล์ที่ผ่าน fileFilter ไม่ใช่ชื่อไฟล์ที่ผู้ใช้ส่งมา — กัน evil.php ที่อ้างตัวเป็น image/png
+      // นามสกุลตามชนิดไฟล์ที่ตรวจแล้ว ไม่ใช่ชื่อไฟล์ที่ส่งมา (กัน evil.php ปลอมเป็นรูป)
       const { url } = await saveImage({ buffer: req.file.buffer, ext: IMAGE_EXT[req.file.mimetype] })
       res.json({ url })
     } catch (e) {
@@ -163,7 +137,7 @@ router.post('/upload/image', (req, res, next) => {
     }
   })
 })
-//แปลงข้อมูลสินค้าให้อยู่ในรูปแบบที่ต้องการ
+// แถว tbl_item → รูปที่หน้ารายการสินค้าแอดมินใช้
 function toAdminProductShape(item) {
   return {
     product_id: item.itm_code,
@@ -176,29 +150,17 @@ function toAdminProductShape(item) {
       ? { category_id: item.item_type.itm_type_code, category_name: item.item_type.itm_type_desc }
       : null,
     _count: { product_model: (item.itm_model_code || '').split(',').filter((s) => s.trim()).length },
-    // Additive — "สินค้าใหม่" (AdminNewProductsPage.vue, 2026-09-03) filters
-    // the same product list client-side by these instead of a new endpoint.
     sale_start_date: item.pb_dt,
     sale_end_date: item.exp_dt,
-    // Additive — หน้า "สินค้าที่ถูกลบ" (?deleted=1) โชว์วันที่ลบกำกับแต่ละแถว
     removed_at: item.rm_dt,
   }
 }
-// ===== DASHBOARD (tbl_logs) — "หน้าแรก" =====
-// สถิติทั้งหมดอ่านจาก tbl_logs ซึ่งเป็นตารางบันทึกกิจกรรมจริงของ
-// dtcshops.com ที่ restore มาพร้อมดัมป์ (39,395 แถวถึง 3 ส.ค. 2026) และ
-// ฝั่ง public ของโปรเจกต์นี้เขียนต่อเข้าไปด้วยตั้งแต่ 8 ก.ย. 2026
-// (ดู utils/activityLog.js) — ไม่ได้สร้างตารางสถิติใหม่ของตัวเอง
-//
-// สินค้าที่ถูกเข้าชมถูกเก็บเป็น "slug ฝังอยู่ในข้อความ" ไม่ใช่คอลัมน์แยก
-// (message = 'การเข้าดูสินค้า : car-camera-n6') จึงต้องตัดเอา slug ออกมา
-// ด้วย split_part แล้วค่อย join กลับเข้า tbl_item.slug — เป็นข้อจำกัดของ
-// โครงสร้างต้นทาง ไม่ใช่การออกแบบของโปรเจกต์นี้
+// GET /admin/dashboard — สถิติจาก tbl_logs (สินค้าที่เข้าชมเก็บเป็น slug ใน message จึงต้อง split_part แล้ว join กลับ)
 router.get('/dashboard', asyncHandler(async (req, res) => {
   const now = new Date()
   const end = parseDateOrNull(req.query.end) || now
   const start = parseDateOrNull(req.query.start) || new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)
-  // ครอบคลุมทั้งวันของ end (ผู้ใช้เลือกเป็นวัน ไม่ใช่เวลา)
+  // รวมทั้งวันของวันสิ้นสุด
   const endOfDay = new Date(end)
   endOfDay.setHours(23, 59, 59, 999)
   const startOfDay = new Date(start)
@@ -245,23 +207,15 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   })
 }))
 
-//แสดงสินค้า
+// GET /admin/products — รายการสินค้า (?deleted=1 = ถังขยะ · ?q = ค้นแบบทนพิมพ์ผิด)
 router.get('/products', asyncHandler(async (req, res) => {
   const { q = '', deleted = '' } = req.query
   const limit = toLimit(req.query.limit, 50, 500)
-  // ตัดสินค้าที่ลบไปแล้ว (soft delete, itm_flag='0' — ดู DELETE /products/:id
-  // ด้านล่าง) ออกจากลิสต์เสมอ — เดิมไม่มีเงื่อนไขนี้เลย ทำให้กด "ลบ" แล้วแถวยัง
-  // ค้างอยู่ในตาราง (ลบสำเร็จจริงฝั่ง DB แต่ตารางไม่ยอมหายไปให้เห็น)
-  // ?deleted=1 กลับด้านเงื่อนไข — ใช้กับหน้า "สินค้าที่ถูกลบ" (ถังขยะ) เพื่อ
-  // แสดงเฉพาะแถวที่ itm_flag='0' ให้กู้คืนได้ (ดู PUT /products/:id/restore)
   const where = { itm_flag: deleted ? '0' : { not: '0' } }
-  // ค้นด้วย fuse.js ต้องดึงทุกแถวมาก่อนแล้วกรอง/เรียงในโค้ด (fuzzy match ทำใน
-  // SQL ตรงๆ ไม่ได้) — แคตตาล็อกมีแค่หลักสิบแถว ไม่กระทบ perf
   let items = await prisma.tbl_item.findMany({
     where,
     include: { item_type: true },
-    // ใหม่สุดอยู่บน เก่าสุดอยู่ล่าง — สินค้าที่นำเข้าชุดเดียวกันมี ist_dt เท่ากันเป๊ะ
-    // (29 ตัว) ลำดับในกลุ่มนั้นจะสุ่มสลับ จึงใช้ itm_code (รันเลขตามลำดับที่สร้าง) ตัดสินต่อ
+    // ใหม่สุดก่อน แล้ว itm_code (สินค้านำเข้าชุดเดียวกันมี ist_dt เท่ากัน)
     orderBy: [{ ist_dt: 'desc' }, { itm_code: 'desc' }],
   })
   if (q) items = fuzzyFilterProducts(items, q)
@@ -269,6 +223,7 @@ router.get('/products', asyncHandler(async (req, res) => {
   res.json({ products: items.slice(0, limit).map(toAdminProductShape), total })
 }))
 
+// GET /admin/products/:id — ข้อมูลเต็มสำหรับฟอร์มแก้ไข
 router.get('/products/:id', asyncHandler(async (req, res) => {
   const item = await prisma.tbl_item.findFirst({
     where: { itm_code: String(req.params.id) },
@@ -307,7 +262,7 @@ router.get('/products/:id', asyncHandler(async (req, res) => {
     option_ids: (item.itm_option_code || '').split(',').map((c) => c.trim()).filter(Boolean),
   })
 }))
-//บันทึกคุณสมบัติของสินค้า
+// เขียนสเปคของสินค้า (หรือของโมเดล) แบบ full-replace
 async function applyProductAttributes(itm_code, attributes, model_code = null) {
   await prisma.tbl_attribute_value.deleteMany({ where: { itm_code, model_code } })
   for (const attr of attributes || []) {
@@ -329,14 +284,7 @@ async function applyProductAttributes(itm_code, attributes, model_code = null) {
   }
 }
 
-// โมเดลสินค้า (tbl_item_model) เป็น shared catalog ตั้งแต่ 2026-09-03 —
-// ไม่ได้ "เป็นของ" สินค้าตัวเดียวตายตัวอีกต่อไป แก้ไขชื่อ/ราคา/สต็อก/สเปคย่อย
-// ทำที่หน้า "โมเดลสินค้า" รวม (AdminModelsPage.vue) เท่านั้น — ฟอร์มแก้ไขสินค้า
-// แต่ละชิ้นแค่ "ติ๊กเลือก" ว่าจะใช้โมเดลไหนบ้าง (checkbox) แล้วส่ง modelIds
-// (รายการ itm_model_code ทั้งหมดที่ติ๊กไว้) มาที่นี่ — ติ๊กโมเดลที่ตอนนี้เป็นของ
-// สินค้าอื่นอยู่ = "แย่ง" มาเป็นของสินค้านี้แทน (ถอดออกจากลิสต์ของเจ้าของเดิม)
-// ถอนติ๊ก = แค่ปลดออกจากสินค้านี้ ไม่ลบแถว tbl_item_model ทิ้ง (โมเดลยังอยู่ใน
-// คลังกลาง รอสินค้าไหนติ๊กเลือกใหม่ก็ได้)
+// ติ๊กโมเดลในฟอร์มสินค้า: ติ๊กโมเดลของสินค้าอื่น = แย่งมา · ถอนติ๊ก = ปลดออก ไม่ลบโมเดล
 async function reassignProductModels(itm_code, modelIds) {
   const wanted = Array.from(new Set((modelIds || []).map((id) => String(id).trim()).filter(Boolean)))
   if (wanted.length > 0) {
@@ -355,20 +303,19 @@ async function reassignProductModels(itm_code, modelIds) {
   return wanted.join(',')
 }
 
-// ตัวเลือกสินค้า / อุปกรณ์เสริม (tbl_item_option) — shared catalog เหมือนโมเดล
-// แต่ "ใช้ร่วมกันได้" ไม่ต้องแย่งเจ้าของ: สินค้าหลายตัวติ๊กตัวเลือกเดียวกันพร้อมกันได้
-// (เช่น SD Card 64GB ใช้ได้กับกล้องหลายรุ่น) จึงแค่เขียนทับรายการของสินค้านี้ตัวเดียว
-// ไม่ไปยุ่งกับ itm_option_code ของสินค้าอื่นเลย — ต่างจาก reassignProductModels()
+// รหัสตัวเลือกเสริม → ข้อความคอมม่าคั่น (ตัวเลือกใช้ร่วมกันหลายสินค้าได้ ไม่ต้องแย่ง)
 function normalizeOptionIds(optionIds) {
   return Array.from(new Set((optionIds || []).map((id) => String(id).trim()).filter(Boolean))).join(',')
 }
 
+// ช่วงราคาของสินค้าจากราคาฐาน + ส่วนเพิ่มของแต่ละโมเดล
 function computePriceRange(basePrice, modelRows) {
   const priced = modelRows.map((r) => basePrice + (r.itm_model_addon_price ?? 0))
   if (priced.length === 0) return { lowest: basePrice, highest: basePrice }
   return { lowest: Math.min(...priced), highest: Math.max(...priced) }
 }
 
+// รายการรูป → คอลัมน์รูปหลัก + รูปย่อย 9 ช่อง
 function galleryToImageColumns(gallery) {
   const paths = (gallery || []).filter((p) => typeof p === 'string' && p.trim()).slice(0, 10)
   const data = { itm_image_master: paths[0] ?? null }
@@ -376,6 +323,7 @@ function galleryToImageColumns(gallery) {
   return data
 }
 
+// body ของฟอร์ม → คอลัมน์ของ tbl_item
 function baseFieldsFromBody(body) {
   return {
     itm_sku: body.sku ? String(body.sku).trim() : null,
@@ -400,7 +348,7 @@ function baseFieldsFromBody(body) {
     ...galleryToImageColumns(body.gallery),
   }
 }
-//เพิ่มสินค้า
+// POST /admin/products — เพิ่มสินค้า
 router.post('/products', asyncHandler(async (req, res) => {
   const sku = req.body.sku ? String(req.body.sku).trim() : ''
   const productName = String(req.body.product_name ?? '').trim()
@@ -449,7 +397,7 @@ router.post('/products', asyncHandler(async (req, res) => {
 
   res.status(201).json({ message: 'เพิ่มสินค้าแล้ว', product_id: itm_code })
 }))
-//แก้ไข
+// PUT /admin/products/:id — แก้สินค้าแบบ full-replace (ยกเว้น option_ids)
 router.put('/products/:id', asyncHandler(async (req, res) => {
   const itm_code = String(req.params.id)
   const existing = await prisma.tbl_item.findFirst({ where: { itm_code } })
@@ -466,9 +414,7 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
   }
 
   const basePrice = parseNumberOrNull(req.body.product_price) ?? 0
-  // Blank input keeps the existing slug (editing the name shouldn't quietly
-  // change a URL someone may already have bookmarked/shared) — only falls
-  // back to deriving one from the name if this product never had one.
+  // slug ว่าง = คง URL เดิม (อาจมีคนแชร์ไว้แล้ว)
   const slug = await resolveSlug(req.body.slug || existing.slug, productName, itm_code)
 
   await prisma.tbl_item.update({
@@ -476,11 +422,8 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
     data: { itm_price: basePrice, mdf_dt: new Date(), slug, ...baseFieldsFromBody(req.body) },
   })
 
-  // โมเดล = shared catalog แล้ว (ดูคอมเมนต์บน reassignProductModels()) —
-  // ถอนติ๊กแค่ปลดออกจากสินค้านี้ ไม่ลบแถว tbl_item_model ทิ้งอีกต่อไป
   const itm_model_code = await reassignProductModels(itm_code, req.body.model_ids)
-  // ไม่ส่ง option_ids มา (undefined) = ไม่แตะตัวเลือกเดิม เผื่อมีจุดอื่นเรียก PUT นี้
-  // แบบไม่ได้ส่งฟิลด์นี้มาด้วย จะได้ไม่ล้างตัวเลือกทิ้งโดยไม่ตั้งใจ
+  // ไม่ส่ง option_ids = ไม่แตะตัวเลือกเดิม
   const itm_option_code = req.body.option_ids === undefined ? undefined : normalizeOptionIds(req.body.option_ids)
   await applyProductAttributes(itm_code, req.body.attributes)
 
@@ -500,7 +443,7 @@ router.put('/products/:id', asyncHandler(async (req, res) => {
 
   res.json({ message: 'บันทึกข้อมูลสินค้าแล้ว' })
 }))
-//ลบสินค้า
+// DELETE /admin/products/:id — ลบแบบ soft (itm_flag='0')
 router.delete('/products/:id', asyncHandler(async (req, res) => {
   const itm_code = String(req.params.id)
   const existing = await prisma.tbl_item.findFirst({ where: { itm_code } })
@@ -508,7 +451,7 @@ router.delete('/products/:id', asyncHandler(async (req, res) => {
   await prisma.tbl_item.update({ where: { itm_code }, data: { itm_flag: '0', rm_dt: new Date() } })
   res.json({ message: 'ลบสินค้าแล้ว' })
 }))
-//กู้คืนสินค้าที่ถูกลบ (ย้อนกลับ soft delete ด้านบน) — ใช้ที่หน้า "สินค้าที่ถูกลบ"
+// PUT /admin/products/:id/restore — กู้คืนสินค้าที่ถูกลบ
 router.put('/products/:id/restore', asyncHandler(async (req, res) => {
   const itm_code = String(req.params.id)
   const existing = await prisma.tbl_item.findFirst({ where: { itm_code } })
@@ -517,8 +460,7 @@ router.put('/products/:id/restore', asyncHandler(async (req, res) => {
   await prisma.tbl_item.update({ where: { itm_code }, data: { itm_flag: '1', rm_dt: null, mdf_dt: new Date() } })
   res.json({ message: 'กู้คืนสินค้าแล้ว' })
 }))
-//แก้เฉพาะวันที่วางจำหน่าย (หน้า "สินค้าใหม่") — แยกจาก PUT /products/:id ที่เป็น full-replace
-//ซึ่งบังคับ product_name และจะล้างรายละเอียด/รูป/สเปค/โมเดลทิ้งถ้าส่งมาไม่ครบก้อน
+// PATCH /admin/products/:id/sale-dates — แก้เฉพาะวันที่วางจำหน่าย (PUT เป็น full-replace จะล้างฟิลด์อื่น)
 router.patch('/products/:id/sale-dates', asyncHandler(async (req, res) => {
   const itm_code = String(req.params.id)
   const existing = await prisma.tbl_item.findFirst({ where: { itm_code } })
@@ -527,7 +469,7 @@ router.patch('/products/:id/sale-dates', asyncHandler(async (req, res) => {
   const { sale_start_date, sale_end_date } = req.body
   const pb_dt = parseDateOrNull(sale_start_date)
   const exp_dt = parseDateOrNull(sale_end_date)
-  // ส่งค่ามาแต่ parse ไม่ได้ = รูปแบบผิด (ต่างจากส่ง null/ว่าง ที่แปลว่าล้างวันที่)
+  // ส่งมาแต่ parse ไม่ได้ = รูปแบบผิด (null/ว่าง = ล้างวันที่)
   if ((sale_start_date && !pb_dt) || (sale_end_date && !exp_dt)) {
     return res.status(400).json({ message: 'รูปแบบวันที่ไม่ถูกต้อง' })
   }
@@ -539,15 +481,12 @@ router.patch('/products/:id/sale-dates', asyncHandler(async (req, res) => {
   res.json({ message: 'บันทึกวันที่จำหน่ายแล้ว', sale_start_date: pb_dt, sale_end_date: exp_dt })
 }))
 
-// ===== CATEGORIES (tbl_item_type) =====
-//แสดงหมวดหมู่
+// GET /admin/categories
 router.get('/categories', asyncHandler(async (_req, res) => {
   const rows = await prisma.tbl_item_type.findMany({ orderBy: { itm_type_desc: 'asc' } })
   res.json(rows.map((r) => ({ category_id: r.itm_type_code, category_name: r.itm_type_desc })))
 }))
-//แสดงหมวดหมู่เดี่ยว — เพิ่ม 4 ก.ย. 2026 สำหรับหน้าฟอร์มแก้ไขเต็มหน้า
-//(แทนที่ popup เดิม) คืนรายชื่อสินค้าที่อยู่ในหมวดนี้ด้วย (product_ids) ให้
-//ฟอร์ม pre-check ตัวเลือกสินค้าได้ถูกต้อง
+// GET /admin/categories/:id — พร้อม product_ids ของสินค้าในหมวด
 router.get('/categories/:id', asyncHandler(async (req, res) => {
   const itm_type_code = String(req.params.id)
   const row = await prisma.tbl_item_type.findUnique({ where: { itm_type_code } })
@@ -556,10 +495,7 @@ router.get('/categories/:id', asyncHandler(async (req, res) => {
   res.json({ category_id: row.itm_type_code, category_name: row.itm_type_desc, thumbnail: row.thumbnail, product_ids: members.map((m) => m.itm_code) })
 }))
 
-// ย้ายสินค้าที่ "ติ๊ก" ไว้ (productIds) ให้มาอยู่หมวดหมู่นี้แทน (แย่งจากหมวด
-// เดิมของสินค้านั้น — เหมือน reassignProductModels() ด้านล่าง) แล้วปลดสินค้า
-// ที่เดิมอยู่หมวดนี้แต่ตอนนี้ไม่ได้ติ๊กแล้วออก (set เป็น NULL ไม่มีหมวดหมู่)
-// — ใช้ทั้งตอนสร้างใหม่ (currentMembers ว่างเสมอ) และตอนแก้ไข
+// ย้ายสินค้าที่ติ๊กเข้าหมวดนี้ และปลดสินค้าที่ไม่ได้ติ๊กแล้วออก (สินค้ามีได้หมวดเดียว)
 async function reassignCategoryMembers(itm_type_code, productIds) {
   const wanted = Array.from(new Set((productIds || []).map((id) => String(id).trim()).filter(Boolean)))
   const currentMembers = await prisma.tbl_item.findMany({ where: { itm_type_code }, select: { itm_code: true } })
@@ -572,10 +508,7 @@ async function reassignCategoryMembers(itm_type_code, productIds) {
   }
 }
 
-//เพิ่มหมวดหมู่ — เพิ่ม 4 ก.ย. 2026: รับ product_ids (optional) มาผูกสินค้าที่
-//เลือกไว้เข้าหมวดหมู่ใหม่นี้ทันทีตอนสร้าง (ย้ายจากหมวดหมู่เดิมของสินค้านั้น
-//มาเป็นหมวดหมู่นี้แทน — tbl_item มีได้แค่ 1 หมวดหมู่ต่อสินค้า ไม่ใช่ many-to-many
-//แบบโมเดล เลยแค่ update itm_type_code ตรงๆ ไม่ต้องมี join table)
+// POST /admin/categories — สร้างหมวด + ย้ายสินค้าที่เลือกเข้ามา
 router.post('/categories', asyncHandler(async (req, res) => {
   const name = String(req.body.category_name ?? '').trim()
   if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อหมวดหมู่', code: 'missingRequiredFields' })
@@ -586,14 +519,14 @@ router.post('/categories', asyncHandler(async (req, res) => {
   await reassignCategoryMembers(itm_type_code, req.body.product_ids)
   res.status(201).json({ category_id: row.itm_type_code, category_name: row.itm_type_desc })
 }))
-//แก้ไขหมวดหมู่ — product_ids (ถ้าส่งมา) แทนที่รายชื่อสินค้าในหมวดนี้ทั้งชุด
+// PUT /admin/categories/:id — product_ids (ถ้าส่ง) แทนที่สมาชิกทั้งชุด
 router.put('/categories/:id', asyncHandler(async (req, res) => {
   const name = String(req.body.category_name ?? '').trim()
   if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อหมวดหมู่', code: 'missingRequiredFields' })
   const itm_type_code = String(req.params.id)
   const row = await prisma.tbl_item_type.update({
     where: { itm_type_code },
-    // thumbnail แก้เฉพาะตอนส่งมา — ไม่ส่ง = คงรูปเดิม (ไม่ล้างรูปทิ้งเงียบๆ)
+    // ไม่ส่ง thumbnail = คงรูปเดิม
     data: {
       itm_type_desc: name,
       ...(req.body.thumbnail !== undefined && { thumbnail: req.body.thumbnail || null }),
@@ -605,7 +538,7 @@ router.put('/categories/:id', asyncHandler(async (req, res) => {
   }
   res.json({ category_id: row.itm_type_code, category_name: row.itm_type_desc })
 }))
-//ลบหมวดหมู่
+// DELETE /admin/categories/:id — ลบไม่ได้ถ้ามีสินค้าผูก
 router.delete('/categories/:id', asyncHandler(async (req, res) => {
   const code = String(req.params.id)
   const inUse = await prisma.tbl_item.count({ where: { itm_type_code: code, itm_flag: '1' } })
@@ -616,13 +549,8 @@ router.delete('/categories/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'ลบหมวดหมู่แล้ว' })
 }))
 
-// ===== ATTRIBUTES (tbl_attribute) =====
 
-// เพิ่ม 4 ก.ย. 2026 — ตั้งค่า "ค่าคุณสมบัตินี้" ของสินค้าที่เลือกไว้โดยตรงจาก
-// ฟอร์มคุณสมบัติเอง (แทนที่จะต้องไปเปิดฟอร์มสินค้าทีละตัว) — full-replace
-// pattern เดียวกับ applyProductAttributes()/reassignCategoryMembers(): ลบค่า
-// ของสินค้าที่ไม่ได้อยู่ในรายการที่ส่งมาออก แล้ว upsert ค่าที่เหลือ — ทำงานกับ
-// แถวระดับสินค้าเท่านั้น (model_code เป็น NULL) ไม่แตะค่าเฉพาะโมเดล
+// ตั้งค่าคุณสมบัตินี้ให้หลายสินค้า แบบ full-replace (เฉพาะค่าร่วม ไม่แตะค่าเฉพาะโมเดล)
 async function applyAttributeProductValues(attribute_code, values) {
   const wanted = (Array.isArray(values) ? values : [])
     .map((v) => ({ itm_code: String(v.product_id ?? '').trim(), value: String(v.value ?? '').trim() }))
@@ -643,15 +571,12 @@ async function applyAttributeProductValues(attribute_code, values) {
   }
 }
 
-//แสดงคุณสมบัติ
+// GET /admin/attributes
 router.get('/attributes', asyncHandler(async (_req, res) => {
   const rows = await prisma.tbl_attribute.findMany({ orderBy: { attribute_name: 'asc' } })
   res.json(rows.map((r) => ({ attribute_id: r.attribute_code, attribute_name: r.attribute_name })))
 }))
-//แสดงคุณสมบัติเดี่ยว — เพิ่ม 4 ก.ย. 2026 สำหรับหน้าฟอร์มแก้ไขเต็มหน้า (แทนที่
-//popup เดิม) — tbl_attribute ไม่มีความสัมพันธ์กับหมวดหมู่สินค้าเลย (ตาราง
-//Category_attribute เดิมถูกลบไปตั้งแต่ 14 ส.ค. 2026) แต่คืนค่าที่สินค้าแต่ละ
-//ตัวตั้งไว้แล้วสำหรับคุณสมบัตินี้ (product_values) ให้ฟอร์ม pre-fill ได้
+// GET /admin/attributes/:id — พร้อมค่าของแต่ละสินค้า (product_values)
 router.get('/attributes/:id', asyncHandler(async (req, res) => {
   const attribute_code = Number(req.params.id)
   const row = await prisma.tbl_attribute.findUnique({ where: { attribute_code } })
@@ -666,7 +591,7 @@ router.get('/attributes/:id', asyncHandler(async (req, res) => {
     product_values: values.map((v) => ({ product_id: v.item.itm_code, product_name: v.item.itm_desc, value: v.value })),
   })
 }))
-// เพิ่มคุณสมบัติ — product_values (optional) ตั้งค่าให้สินค้าที่เลือกทันที
+// POST /admin/attributes — product_values (ถ้าส่ง) ตั้งค่าให้สินค้าทันที
 router.post('/attributes', asyncHandler(async (req, res) => {
   const name = String(req.body.attribute_name ?? '').trim()
   if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อคุณสมบัติ', code: 'missingRequiredFields' })
@@ -676,7 +601,7 @@ router.post('/attributes', asyncHandler(async (req, res) => {
   }
   res.status(201).json({ attribute_id: row.attribute_code, attribute_name: row.attribute_name })
 }))
-//แก้ไขคุณสมบัติ — product_values (ถ้าส่งมา) แทนที่ค่าคุณสมบัตินี้ของสินค้าทั้งชุด
+// PUT /admin/attributes/:id — product_values (ถ้าส่ง) แทนที่ทั้งชุด
 router.put('/attributes/:id', asyncHandler(async (req, res) => {
   const name = String(req.body.attribute_name ?? '').trim()
   if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อคุณสมบัติ', code: 'missingRequiredFields' })
@@ -690,7 +615,7 @@ router.put('/attributes/:id', asyncHandler(async (req, res) => {
   }
   res.json({ attribute_id: row.attribute_code, attribute_name: row.attribute_name })
 }))
-//ลบคุณสมบัติ
+// DELETE /admin/attributes/:id — ลบไม่ได้ถ้ามีค่าผูก
 router.delete('/attributes/:id', asyncHandler(async (req, res) => {
   try {
     await prisma.tbl_attribute.delete({ where: { attribute_code: Number(req.params.id) } })
@@ -703,25 +628,10 @@ router.delete('/attributes/:id', asyncHandler(async (req, res) => {
   }
 }))
 
-// Added 2026-09-03 — the sections below (ร้านค้า/แบนเนอร์/ข้อมูล Footer/
-// โมเดลสินค้า) mirror the reference back-office's own sidebar — see
-// database/schema.prisma's matching comment on why these tables needed a
-// primary key added before any of this could work reliably. Same shape as
-// CATEGORIES/ATTRIBUTES above: plain CRUD, no soft-delete despite the real
-// `flag` column (this project's own admin never used flag='0' as a soft-
-// delete convention for categories/attributes either — kept consistent
-// rather than inventing a new pattern here).
-//
-// ลบออกแล้ว 10 ก.ย. 2026 — บทความ (tbl_articles) / โฆษณาร้านค้า
-// (tbl_promotion) / ข้อมูล SEO (tbl_page): endpoint ทั้ง 3 ชุดถูกลบทิ้งตาม
-// คำขอผู้ใช้ เพราะเป็นฟีเจอร์ของเว็บร้านค้าต้นแบบ ไม่ได้อยู่ในขอบเขตระบบ
-// ค้นหา/เปรียบเทียบสินค้านี้ และหน้าแอดมินของทั้งสามถูกปิดเป็น placeholder
-// ไปก่อนหน้านี้แล้ว (ไม่มีอะไรเรียกใช้เหลืออยู่) — ตารางในฐานข้อมูลยังอยู่
-// ครบ ไม่ได้ DROP ทิ้ง
 const nextShopId = () => nextCode('tbl_shop', 'shop_id', 'shop', 7)
 const nextBannerCode = () => nextCode('tbl_bnn_slide', 'bnn_slide_code', 'bnn', 7)
 
-// ===== SHOP BRANCHES (tbl_shop) — "ร้านค้า" > "ข้อมูลร้านค้า" =====
+// GET/POST/PUT/DELETE /admin/shops — สาขา DTC Shop
 router.get('/shops', asyncHandler(async (req, res) => {
   const { q = '' } = req.query
   const rows = await prisma.tbl_shop.findMany({
@@ -785,7 +695,7 @@ router.delete('/shops/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'ลบร้านค้าแล้ว' })
 }))
 
-// ===== BANNERS (tbl_bnn_slide) — "แบนเนอร์" > "ข้อมูลแบนเนอร์" =====
+// GET/POST/PUT/DELETE /admin/banners — แบนเนอร์หน้าแรก
 router.get('/banners', asyncHandler(async (req, res) => {
   const { q = '' } = req.query
   const rows = await prisma.tbl_bnn_slide.findMany({
@@ -845,8 +755,7 @@ router.delete('/banners/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'ลบแบนเนอร์แล้ว' })
 }))
 
-// ===== FOOTER (tbl_footer) — "ข้อมูล Footer" (public GET already exists
-// at routes/footer.js; this adds the admin-side write side) =====
+// GET/POST/PUT/DELETE /admin/footer — เนื้อหา footer
 router.get('/footer', asyncHandler(async (req, res) => {
   const { q = '' } = req.query
   const rows = await prisma.tbl_footer.findMany({
@@ -896,17 +805,8 @@ router.delete('/footer/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'ลบข้อมูลแล้ว' })
 }))
 
-// ===== MODELS — aggregate list across every product (tbl_item_model),
-// "สินค้า" > "โมเดลสินค้า" — a dedicated browse page in addition to the
-// per-product tab already in the product-edit form. Models aren't linked
-// to their parent product via a foreign key in production (see schema.prisma's
-// comment on tbl_item) — the relation is tbl_item.itm_model_code holding a
-// comma-separated list of codes, so this builds the reverse lookup itself. =====
 
-// สแกนสินค้าทุกตัวที่มีโมเดลอยู่หา itm_code ของสินค้าแม่ที่ผูกกับ model_code นี้
-// (ทำแบบ split-per-item เหมือน GET /models ด้านล่าง ไม่ใช้ `contains` ตรงๆ
-// เพราะรหัสโมเดลตัวหนึ่งอาจเป็น substring ของอีกตัว เช่น "MD000001" กับ
-// "MD0000010" — ถ้าใช้ contains จะจับคู่ผิดได้)
+// หาสินค้าเจ้าของโมเดลนี้ (แยกรหัสทีละตัว ไม่ใช้ contains เพราะรหัสหนึ่งอาจเป็น substring ของอีกตัว)
 async function findParentByModelCode(model_code) {
   const items = await prisma.tbl_item.findMany({
     where: { itm_model_code: { not: null } },
@@ -919,13 +819,11 @@ async function findParentByModelCode(model_code) {
   return null
 }
 
+// GET /admin/models — โมเดลทั้งหมด + สินค้าเจ้าของ + สเปคเฉพาะโมเดล (?q = ค้น)
 router.get('/models', asyncHandler(async (req, res) => {
   const { q = '' } = req.query
   const [models, items] = await Promise.all([
     prisma.tbl_item_model.findMany({ orderBy: { itm_model_desc: 'asc' } }),
-    // include item_type — needed so the list page (AdminModelsPage.vue) can
-    // group models under the category of whichever product currently owns
-    // them (added 4 ก.ย. 2026)
     prisma.tbl_item.findMany({
       where: { itm_model_code: { not: null } },
       select: { itm_code: true, itm_desc: true, itm_model_code: true, item_type: { select: { itm_type_code: true, itm_type_desc: true } } },
@@ -942,8 +840,6 @@ router.get('/models', asyncHandler(async (req, res) => {
       }
     }
   }
-  // สเปคเฉพาะโมเดล ("คุณสมบัติย่อย") — ให้หน้านี้แก้ไขได้เองโดยไม่ต้องไปเปิด
-  // ฟอร์มสินค้าแม่ (2026-09-03)
   const overrides = await prisma.tbl_attribute_value.findMany({
     where: { model_code: { in: models.map((m) => m.itm_model_code) } },
     include: { attribute: true },
@@ -967,8 +863,7 @@ router.get('/models', asyncHandler(async (req, res) => {
     .filter((r) => !term || r.model_name?.toLowerCase().includes(term) || r.product?.product_name?.toLowerCase().includes(term))
   res.json(rows)
 }))
-//แสดงโมเดลเดี่ยว — เพิ่ม 4 ก.ย. 2026 สำหรับหน้าฟอร์มแก้ไขเต็มหน้า (แทนที่
-//popup เดิม) — รูปแบบผลลัพธ์เดียวกับแถวใน GET /models ด้านบน
+// GET /admin/models/:id
 router.get('/models/:id', asyncHandler(async (req, res) => {
   const model_code = String(req.params.id)
   const model = await prisma.tbl_item_model.findUnique({ where: { itm_model_code: model_code } })
@@ -999,9 +894,7 @@ router.get('/models/:id', asyncHandler(async (req, res) => {
     product_attribute_value: overrides.map((v) => ({ value: v.value, attribute: { attribute_id: v.attribute_code, attribute_name: v.attribute.attribute_name } })),
   })
 }))
-// เพิ่มโมเดลใหม่จากหน้ารวม — ต้องระบุว่าผูกกับสินค้าตัวไหน (ต่างจากแก้ไข/ลบที่ไม่ต้องรู้
-// เพราะกระทำกับ tbl_item_model โดยตรง) แล้วต่อโค้ดโมเดลใหม่เข้า itm_model_code
-// (คอมม่าคั่น) ของสินค้านั้น — รูปแบบเดียวกับ applyProductModels() ที่ฟอร์มแก้ไขสินค้าใช้
+// POST /admin/models — สร้างโมเดลแล้วต่อรหัสเข้า itm_model_code ของสินค้าที่เลือก
 router.post('/models', asyncHandler(async (req, res) => {
   const product_id = String(req.body.product_id ?? '').trim()
   const model_name = String(req.body.model_name ?? '').trim()
@@ -1029,8 +922,6 @@ router.post('/models', asyncHandler(async (req, res) => {
   existingCodes.push(model_id)
   await prisma.tbl_item.update({ where: { itm_code: product_id }, data: { itm_model_code: existingCodes.join(',') } })
 
-  // สเปคเฉพาะโมเดล — เพิ่ม 4 ก.ย. 2026 ให้กรอกได้ตั้งแต่ตอนสร้างเลย (ของเดิม
-  // popup ตอนเพิ่มไม่มีช่องนี้ ต้องไปเปิดแก้ไขทีหลังถึงจะใส่ได้)
   let overrides = []
   if (Array.isArray(req.body.attributes) && req.body.attributes.length > 0) {
     await applyProductAttributes(product_id, req.body.attributes, model_id)
@@ -1047,9 +938,7 @@ router.post('/models', asyncHandler(async (req, res) => {
     product_attribute_value: overrides,
   })
 }))
-// เพิ่ม 4 ก.ย. 2026 — ย้ายความเป็นเจ้าของโมเดล model_code ไปให้สินค้า
-// new_itm_code แทน (ถอดออกจากเจ้าของเดิมก่อนถ้ามี) ใช้ตอนแก้ไขโมเดลจากฟอร์ม
-// เต็มหน้าใหม่ที่ให้สลับสินค้าที่ผูกได้ด้วย (เดิม popup ไม่มีให้แก้จุดนี้)
+// ย้ายเจ้าของโมเดลไปสินค้าใหม่ (ถอดออกจากเจ้าของเดิมก่อน)
 async function reassignModelOwner(model_code, new_itm_code) {
   const current_itm_code = await findParentByModelCode(model_code)
   if (current_itm_code === new_itm_code) return
@@ -1067,6 +956,7 @@ async function reassignModelOwner(model_code, new_itm_code) {
   }
 }
 
+// PUT /admin/models/:id — แก้โมเดล / ย้ายเจ้าของ / สเปคเฉพาะโมเดล
 router.put('/models/:id', asyncHandler(async (req, res) => {
   const model_code = String(req.params.id)
   const row = await prisma.tbl_item_model.update({
@@ -1081,9 +971,7 @@ router.put('/models/:id', asyncHandler(async (req, res) => {
   if (req.body.product_id !== undefined) {
     await reassignModelOwner(model_code, String(req.body.product_id).trim() || null)
   }
-  // สเปคเฉพาะโมเดล ("คุณสมบัติย่อย") — ส่งมาก็แทนที่ทั้งชุด (full-replace
-  // pattern เดียวกับ applyProductAttributes() ที่ฟอร์มสินค้าใช้), ไม่ส่งมา
-  // (undefined) ก็ไม่แตะของเดิมเลย เผื่อมีจุดอื่นเรียก PUT นี้แค่แก้ราคา/สต็อก
+  // ส่ง attributes = แทนที่ทั้งชุด · ไม่ส่ง = ไม่แตะ
   let overrides = []
   if (req.body.attributes !== undefined) {
     const itm_code = await findParentByModelCode(model_code)
@@ -1102,9 +990,7 @@ router.put('/models/:id', asyncHandler(async (req, res) => {
   })
 }))
 
-// ลบโมเดลทิ้งจริง (ไม่ใช่ soft delete — ตรงกับที่ removedCodes ใน PUT /products/:id
-// ทำอยู่แล้วเวลาเอาโมเดลออกจากฟอร์มสินค้า) สเปคเฉพาะโมเดล (tbl_attribute_value)
-// ถูกลบตามอัตโนมัติผ่าน onDelete: Cascade บน model_code FK ไม่ต้องลบมือ
+// DELETE /admin/models/:id — ลบจริง (สเปคเฉพาะโมเดลลบตามด้วย cascade)
 router.delete('/models/:id', asyncHandler(async (req, res) => {
   const model_code = String(req.params.id)
   const existing = await prisma.tbl_item_model.findUnique({ where: { itm_model_code: model_code } })
@@ -1122,13 +1008,9 @@ router.delete('/models/:id', asyncHandler(async (req, res) => {
   res.json({ message: 'ลบโมเดลแล้ว' })
 }))
 
-// ===== OPTIONS (tbl_item_option) — "ตัวเลือกสินค้า" / อุปกรณ์เสริมที่ซื้อเพิ่มได้
-// (SD Card, เซ็นเซอร์วัดน้ำมัน, เครื่องอ่านบัตร DLT ฯลฯ) คนละอย่างกับ "โมเดลสินค้า"
-// ซึ่งเป็นรุ่นย่อยของตัวสินค้าเอง — ผูกกับสินค้าผ่าน tbl_item.itm_option_code
-// (คอมม่าคั่น) และ *ไม่* ถูกดึงเข้าตารางเปรียบเทียบตามคำขอผู้ใช้ (2026-09-09) =====
+// ตัวเลือกเสริม (SD Card ฯลฯ) — ผูกผ่าน itm_option_code ใช้ร่วมกันหลายสินค้า ไม่เข้าตารางเปรียบเทียบ
 
-//หาสินค้าทุกตัวที่ติ๊กใช้ตัวเลือกแต่ละตัวอยู่ (split-per-item กัน false positive
-//จากรหัสที่เป็น substring ของกันเอง เช่น PTCARD038 กับ PTCARD038-1)
+// ตัวเลือกแต่ละตัวถูกใช้กับสินค้าไหนบ้าง (แยกรหัสทีละตัว กันรหัสที่เป็น substring)
 async function buildOptionUsage() {
   const items = await prisma.tbl_item.findMany({
     where: { itm_option_code: { not: null }, itm_flag: { not: '0' } },
@@ -1144,6 +1026,7 @@ async function buildOptionUsage() {
   return usage
 }
 
+// แถวตัวเลือก → รูปที่หน้าแอดมินใช้
 function optionShape(row, products) {
   return {
     option_id: row.itm_option_code,
@@ -1155,6 +1038,7 @@ function optionShape(row, products) {
   }
 }
 
+// GET /admin/options (?q = ค้น)
 router.get('/options', asyncHandler(async (req, res) => {
   const { q = '' } = req.query
   const [rows, usage] = await Promise.all([
@@ -1172,6 +1056,7 @@ router.get('/options', asyncHandler(async (req, res) => {
   )
 }))
 
+// GET /admin/options/:id
 router.get('/options/:id', asyncHandler(async (req, res) => {
   const option_code = String(req.params.id)
   const row = await prisma.tbl_item_option.findUnique({ where: { itm_option_code: option_code } })
@@ -1180,6 +1065,7 @@ router.get('/options/:id', asyncHandler(async (req, res) => {
   res.json(optionShape(row, usage.get(option_code)))
 }))
 
+// POST /admin/options
 router.post('/options', asyncHandler(async (req, res) => {
   const option_name = String(req.body.option_name ?? '').trim()
   if (!option_name) return res.status(400).json({ message: 'กรุณากรอกชื่อตัวเลือกสินค้า', code: 'missingRequiredFields' })
@@ -1194,8 +1080,7 @@ router.post('/options', asyncHandler(async (req, res) => {
       ist_dt: new Date(),
     },
   })
-  // ผูกกับสินค้าที่เลือกไว้ตั้งแต่ตอนสร้าง (ต่อท้าย itm_option_code ของสินค้านั้น
-  // ไม่ทับของเดิม เพราะสินค้าหนึ่งมีได้หลายตัวเลือกพร้อมกัน)
+  // ต่อท้ายตัวเลือกเดิมของสินค้า ไม่ทับ
   const productIds = Array.isArray(req.body.product_ids) ? req.body.product_ids : []
   for (const product_id of productIds.map((id) => String(id).trim()).filter(Boolean)) {
     const item = await prisma.tbl_item.findUnique({ where: { itm_code: product_id } })
@@ -1208,6 +1093,7 @@ router.post('/options', asyncHandler(async (req, res) => {
   res.status(201).json(optionShape(row, usage.get(option_id)))
 }))
 
+// PUT /admin/options/:id
 router.put('/options/:id', asyncHandler(async (req, res) => {
   const option_code = String(req.params.id)
   const existing = await prisma.tbl_item_option.findUnique({ where: { itm_option_code: option_code } })
@@ -1221,7 +1107,7 @@ router.put('/options/:id', asyncHandler(async (req, res) => {
       mdf_dt: new Date(),
     },
   })
-  // ส่ง product_ids มา = กำหนดใหม่ทั้งชุดว่าตัวเลือกนี้ถูกใช้กับสินค้าไหนบ้าง
+  // ส่ง product_ids = กำหนดสินค้าที่ใช้ตัวเลือกนี้ใหม่ทั้งชุด
   if (req.body.product_ids !== undefined) {
     const wanted = new Set((req.body.product_ids || []).map((id) => String(id).trim()).filter(Boolean))
     const items = await prisma.tbl_item.findMany({
@@ -1241,8 +1127,7 @@ router.put('/options/:id', asyncHandler(async (req, res) => {
   res.json(optionShape(row, usage.get(option_code)))
 }))
 
-// ลบแบบ soft delete (itm_option_flag='0' + rm_dt) ตรงกับที่ระบบจริงของ dtcshops ทำ
-// — พร้อมปลดตัวเลือกนี้ออกจากสินค้าทุกตัวที่ติ๊กไว้ ไม่งั้นหน้าสินค้าจะยังโชว์ตัวเลือกผี
+// DELETE /admin/options/:id — ลบแบบ soft + ปลดออกจากทุกสินค้า
 router.delete('/options/:id', asyncHandler(async (req, res) => {
   const option_code = String(req.params.id)
   const existing = await prisma.tbl_item_option.findUnique({ where: { itm_option_code: option_code } })

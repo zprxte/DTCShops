@@ -1,7 +1,8 @@
-// สร้างข้อความ Flex ของ LINE จากข้อมูลสินค้า/สาขาของ API ระบบเรา
+// สร้างข้อความ Flex ของ LINE (การ์ดสินค้า / สเปค / สาขา / Quick Reply)
 
 const SPEC_ROWS = 8; // การ์ด LINE ขยายเองไม่ได้ — ที่เหลือดูบนเว็บ
 
+// ราคาแบบเว็บ: 0 = ติดต่อสอบถาม · โมเดลราคาต่างกัน = ช่วงราคา
 export function formatPrice(p) {
   const min = Number(p.product_price ?? 0);
   const max = Number(p.product_price_max ?? min);
@@ -12,13 +13,13 @@ export function formatPrice(p) {
 
 const shortName = (name) => (name.length > 40 ? name.slice(0, 40) + '…' : name);
 
-// ปุ่มลิงก์ของ Flex ต้องเป็น http/https/tel/line ยาวไม่เกิน 1000 ตัว และเป็น URL ที่สมบูรณ์
-// (ลิงก์ Shopee บางตัวใน DB ถูกตัดกลาง %xx — ถ้าส่งไป LINE ปฏิเสธทั้งข้อความ)
+// LINE ปฏิเสธทั้งข้อความถ้าลิงก์ไม่สมบูรณ์ (ลิงก์ Shopee บางตัวใน DB ถูกตัดกลาง %xx) จึงกรองก่อน
 function okUri(u) {
   if (typeof u !== 'string' || u.length > 1000 || !/^(https?:|tel:|line:)/.test(u)) return false;
   try { decodeURI(u); new URL(u); return true; } catch { return false; }
 }
 
+// การ์ดสินค้า 1 ใบ: รูป หมวด ชื่อ ราคา + ปุ่มดูคุณสมบัติ/ดูบนเว็บ
 function productBubble(p, ctx) {
   const footer = [{
     type: 'button', style: 'primary', color: '#06A648', height: 'sm',
@@ -44,7 +45,7 @@ function productBubble(p, ctx) {
   return bubble;
 }
 
-// การ์ดใบสุดท้ายของชุด — กดแล้วบอทส่งชุดถัดไป (carousel มีได้ไม่เกิน 12 ใบ)
+// การ์ดใบสุดท้าย "ดูเพิ่มเติม" — กดแล้วบอทส่งชุดถัดไป
 function moreBubble({ remaining, data }) {
   return {
     type: 'bubble', size: 'kilo',
@@ -64,14 +65,14 @@ function moreBubble({ remaining, data }) {
   };
 }
 
-// more = { remaining, data } → สินค้า 11 ใบ + การ์ด "ดูเพิ่มเติม"
+// carousel สินค้า (มี more = 11 ใบ + การ์ดดูเพิ่มเติม เพราะ LINE รับได้ 12 ใบ)
 export function productCarousel(products, ctx, altText = 'สินค้า', more = null) {
   const bubbles = products.slice(0, more ? 11 : 12).map((p) => productBubble(p, ctx));
   if (more) bubbles.push(moreBubble(more));
   return { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } };
 }
 
-// สินค้าหลายโมเดล → การ์ดปัด 1 ใบต่อโมเดล (ราคา + สเปคของโมเดลนั้น) · โมเดลเดียว/ไม่มีโมเดล → การ์ดเดียวแบบเดิม
+// การ์ดสเปค: หลายโมเดล = การ์ดปัดละโมเดล · โมเดลเดียว = การ์ดเดียว
 export function specBubble(d, ctx) {
   const models = (d.product_model || []).slice(0, 12);
   if (models.length < 2) return { type: 'flex', altText: `คุณสมบัติ ${shortName(d.product_name)}`, contents: specCard(d, ctx) };
@@ -81,8 +82,7 @@ export function specBubble(d, ctx) {
   ];
 }
 
-// สเปคของโมเดล = สเปคร่วมที่ถูกแทนด้วยค่าเฉพาะโมเดล (ชื่อหัวข้อเดียวกัน) แบบเดียวกับหน้าเว็บ
-// แต่เอาค่าเฉพาะโมเดลขึ้นก่อนและใส่สีให้เห็น — การ์ดโชว์ได้ SPEC_ROWS แถว ถ้าไว้ท้ายจะถูกตัดพอดี
+// การ์ดสเปคของสินค้า/โมเดล — ค่าเฉพาะโมเดลขึ้นก่อนเพราะการ์ดตัดที่ SPEC_ROWS แถว
 function specCard(d, ctx, model = null) {
   const toSpec = (a, own) => ({ k: a.attribute?.attribute_name ?? '', v: String(a.value ?? ''), own });
   const own = (model?.product_attribute_value || []).map((a) => toSpec(a, true));
@@ -113,21 +113,18 @@ function specCard(d, ctx, model = null) {
     body.push({ type: 'text', text: `อีก ${specs.length - SPEC_ROWS} หัวข้อ ${ctx.webUrl(d) ? 'กด “ดูคุณสมบัติทั้งหมด”' : 'ดูได้บนเว็บ'}`, size: 'xxs', color: '#5F6B78', margin: 'md' });
   }
 
-  // ปุ่มสั่งซื้อของสินค้านั้น (มีลิงก์ไหนแสดงลิงก์นั้น) + ปุ่มเปิดหน้าสินค้าบนเว็บ
-  // ไม่มีปุ่มสั่งซื้อ LINE — ลูกค้าคุยอยู่ใน LINE ของร้านอยู่แล้ว
+  // ไม่มีปุ่มสั่งซื้อ LINE เพราะลูกค้าคุยอยู่ใน LINE ร้านแล้ว
   const buttons = [
     ['Shopee', d.shopee_link, '#D8481C'], ['Lazada', d.lazada_link, '#1A1A8E'], ['TikTok', d.tiktok_link, '#111111'],
   ].filter(([, u]) => okUri(u)).map(([label, uri, color]) => ({
     type: 'button', style: 'primary', color, height: 'sm', action: { type: 'uri', label: `สั่งซื้อ ${label}`, uri },
   }));
-  // ปุ่มเว็บต่อท้ายปุ่มร้าน (อยู่ข้าง TikTok) — ครึ่งแถวบนมือถือจริงตัดชื่อเหลือ "ดูคุณสมบัติทั้ง…"
-  // จึงให้ LINE ย่อตัวอักษรให้พอดีปุ่มแทน (shrink-to-fit · LINE รุ่นเก่าที่ไม่รู้จักจะตัดชื่อเหมือนเดิม)
+  // shrink-to-fit: ครึ่งแถวบนมือถือจริงตัดชื่อปุ่มเว็บ
   const web = ctx.webUrl(d);
   if (web) buttons.push({ type: 'button', style: 'primary', color: '#1F6FB2', height: 'sm', adjustMode: 'shrink-to-fit', action: { type: 'uri', label: 'ดูคุณสมบัติทั้งหมด', uri: web } });
   const footer = [];
   for (let i = 0; i < buttons.length; i += 2) {
     const row = buttons.slice(i, i + 2);
-    // เหลือปุ่มเดียว ใส่กล่องว่างไว้ข้างๆ ให้กว้างครึ่งแถวเท่าปุ่มอื่น ไม่ยืดเต็มแถว
     if (row.length === 1) row.push({ type: 'box', layout: 'vertical', contents: [], flex: 1 });
     footer.push({ type: 'box', layout: 'horizontal', spacing: 'sm', contents: row });
   }
@@ -137,14 +134,14 @@ function specCard(d, ctx, model = null) {
   return bubble;
 }
 
-// "1176 ต่อ 51" → tel:1176,51 (จุลภาค = รอสายแล้วกดเบอร์ต่อให้เอง) · เดิมได้แค่ tel:1176 ทุกสาขา
+// "1176 ต่อ 51" → tel:1176,51 (จุลภาค = รอสายแล้วกดเบอร์ต่อให้)
 function telUri(raw) {
   const [main, ext] = String(raw || '').split(/ต่อ|ext\.?|#/i).map((s) => (s || '').replace(/\D/g, ''));
   if (!main || main.length < 3) return null;
   return `tel:${main}${ext ? ',' + ext : ''}`;
 }
 
-// more = { remaining, data } → สาขา 11 ใบ + การ์ด "ดูเพิ่มเติม" แบบเดียวกับผลค้นหาสินค้า
+// carousel สาขา (มี more = 11 ใบ + การ์ดดูเพิ่มเติม)
 export function shopCarousel(shops, ctx, altText = 'สาขา DTC Shop', more = null) {
   const bubbles = shops.slice(0, more ? 11 : 12).map((s) => {
     const buttons = [];
@@ -170,13 +167,12 @@ export function shopCarousel(shops, ctx, altText = 'สาขา DTC Shop', more
   return { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } };
 }
 
-// Quick Reply — ปุ่มเลือกใต้ช่องแชต (สูงสุด 13 ปุ่ม, ป้ายยาวสุด 20 ตัวอักษร)
+// ปุ่ม Quick Reply ใต้ช่องแชต (สูงสุด 13 ปุ่ม ป้ายยาวสุด 20 ตัวอักษร)
 export function quickReply(items) {
   return {
     items: items.slice(0, 13).map((it) => ({
       type: 'action',
       action: it.keyboard != null
-        // เปิดแป้นพิมพ์พร้อมเติมข้อความไว้ให้ (เช่น "ค้นหา: ") — ผู้ใช้พิมพ์ต่อท้ายแล้วกดส่งเอง
         ? { type: 'postback', label: it.label.slice(0, 20), data: it.data, inputOption: 'openKeyboard', fillInText: it.keyboard }
         : it.data
           ? { type: 'postback', label: it.label.slice(0, 20), data: it.data, displayText: it.text ?? it.label }

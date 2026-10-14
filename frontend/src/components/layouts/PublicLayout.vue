@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// โครงหน้า Public: header (โลโก้ ค้นหา ภาษา) + footer จาก DB + ปุ่มลอยเปรียบเทียบ + บันทึกการเข้าชม
 import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { GitCompare, Menu, X, Phone, Printer, Mail } from 'lucide-vue-next'
@@ -16,25 +17,14 @@ const menuOpen = ref(false)
 const compareStore = useCompareStore()
 const { lang, setLang, langs } = useLanguage()
 
-// Footer content (company info/menu/cert badges/social icons) comes from
-// tbl_footer, the real dtcshops.com CMS table behind their own site footer
-// — see backend/src/routes/footer.js. Menu titles that match this app's
-// own pages route internally; anything else (e.g. "บทความ", which has no
-// page here) falls back to the real dtcshops.com URL the DB row carries.
+// เมนู footer ที่ตรงหน้าในเว็บนี้ลิงก์ภายใน ที่เหลือใช้ URL ของเว็บจริงจาก DB
 const footer = ref<FooterContent | null>(null)
 const INTERNAL_MENU_ROUTES: Record<string, string> = {
   หน้าแรก: '/',
   สินค้าทั้งหมด: '/products',
 }
 
-// Some cert badge images bundle 2 accreditation marks side by side in one
-// wide file (e.g. the real ISO9001:2015 badge is 1233×635 — URS + UKAS
-// logos framed together) while the rest are plain 1:1 squares. Fixing all
-// of them to the same rendered HEIGHT (as below) leaves each mark inside a
-// wide combo image looking visually smaller/more cramped than the square
-// ones. Detect this from the image's own natural size on load (rather than
-// hardcoding which cert index is "the wide one") and bump just that
-// badge's height so each individual mark reads at roughly the same size.
+// รูปใบรับรองที่รวม 2 ตราในไฟล์เดียว (กว้างกว่าสูง) ขยายความสูงให้ตราดูขนาดเท่าตัวอื่น
 const certBadgeWide = ref<Record<string, boolean>>({})
 function onCertBadgeLoad(event: Event, key: string) {
   const img = event.target as HTMLImageElement
@@ -52,9 +42,7 @@ onMounted(async () => {
   }
 })
 
-// บันทึกการเข้าชมหน้าเว็บลง tbl_logs (ป้อนสถิติให้แดชบอร์ดฝั่งแอดมิน)
-// ทำที่ layout จุดเดียวแทนที่จะไปใส่ทีละหน้า และไม่นับหน้ารายละเอียดสินค้า
-// เพราะ backend บันทึกให้เองแล้วตอนดึงข้อมูลสินค้า (กันนับซ้ำ)
+// บันทึกการเข้าชมหน้าเว็บ (ยกเว้นหน้าสินค้า — backend บันทึกเอง)
 const PAGE_KEY_BY_PATH: Record<string, 'home' | 'products' | 'compare'> = {
   '/': 'home',
   '/products': 'products',
@@ -64,7 +52,6 @@ function logPageView(path: string) {
   const page = PAGE_KEY_BY_PATH[path]
   if (!page) return
   logAPI.pageView(page).catch(() => {
-    // สถิติล้มเหลวไม่ควรรบกวนผู้ใช้ — เงียบไว้
   })
 }
 logPageView(route.path)
@@ -76,10 +63,7 @@ const navLinks = [
   { to: '/compare', label: () => langs('navCompare') },
 ]
 
-// Publish the header's real rendered height as a CSS var so pages with their
-// own sticky elements (e.g. ComparePage's table header) can offset against
-// it instead of hardcoding a pixel guess that drifts whenever this header's
-// content changes (mobile menu open/closed, font load, viewport width, ...).
+// ตั้งความสูงจริงของ header เป็น CSS var ให้ส่วน sticky ของแต่ละหน้าใช้
 const headerEl = ref<HTMLElement | null>(null)
 let headerResizeObserver: ResizeObserver | null = null
 
@@ -99,27 +83,20 @@ onBeforeUnmount(() => {
   headerResizeObserver?.disconnect()
 })
 
-// menuOpen toggles the mobile dropdown inside <header>, which changes its
-// height immediately — resync on the next tick rather than waiting on the
-// ResizeObserver's own (slightly delayed) callback.
+// เปิด/ปิดเมนูมือถือ header สูงเปลี่ยนทันที — วัดใหม่เลยไม่รอ ResizeObserver
 watch(menuOpen, () => nextTick(syncHeaderHeightVar))
 </script>
 
 <template>
   <div class="min-h-screen flex flex-col bg-gray-50">
-    <!-- ลิงก์ข้ามไปเนื้อหาหลัก (Week 14 — accessibility) มองไม่เห็นจนกว่าจะกด Tab
-         เข้ามา ช่วยคนที่ใช้คีย์บอร์ด/โปรแกรมอ่านหน้าจอข้ามแถบเมนูด้านบนที่ซ้ำกัน
-         ทุกหน้าไปที่เนื้อหาได้เลย -->
+    <!-- ลิงก์ข้ามไปเนื้อหาหลัก (เห็นเมื่อกด Tab) -->
     <a
       href="#main-content"
       class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-white focus:text-brand-700 focus:shadow-lg focus:ring-2 focus:ring-brand-500"
     >
       {{ langs('skipToContent') }}
     </a>
-    <!-- Top utility bar — ห่อเป็น <nav> ที่มีชื่อกำกับ เพื่อให้เนื้อหาในแถบนี้อยู่ใน
-         landmark (axe: "region") ไม่งั้นคนที่ใช้โปรแกรมอ่านหน้าจอไล่ทีละ landmark
-         จะข้ามปุ่มเปลี่ยนภาษาตรงนี้ไปเลย — ใช้ nav ไม่ใช่ banner เพราะ <header>
-         ด้านล่างเป็น banner ของหน้าอยู่แล้ว (มีได้อันเดียวต่อหน้า) -->
+    <!-- ห่อด้วย nav ให้เป็น landmark (axe: region) -->
     <nav :aria-label="langs('languageBarLabel')" class="bg-navy-900 text-white text-xs print:hidden">
       <div class="w-full px-4 h-8 flex items-center justify-between">
         <span class="hidden sm:inline text-navy-100/70">{{ langs('tagline') }}</span>
@@ -139,14 +116,7 @@ watch(menuOpen, () => nextTick(syncHeaderHeightVar))
       </div>
     </nav>
 
-    <!-- Main header — z-[35], not the z-20 it started at: a page's own
-         sticky content (e.g. ComparePage.vue's feature-filter panel, z-30)
-         doesn't nest inside <header>'s stacking context (<main> in between
-         has no z-index of its own), so it was painting OVER the header —
-         including the search box's autocomplete dropdown living inside it,
-         which is what this actually surfaced as. z-35 sits above every
-         in-page sticky element (currently capped at 30) but still under
-         full-screen modals (40+), which should keep covering the header. -->
+    <!-- z-[35]: อยู่เหนือส่วน sticky ของหน้า (≤ 30) แต่ใต้ป็อปอัป (40+) -->
     <header ref="headerEl" class="bg-white border-b sticky top-0 z-[35] shadow-sm print:hidden">
       <div class="w-full px-4 py-3 flex items-center gap-2 sm:gap-4">
         <router-link to="/" class="flex items-center gap-2 shrink-0">
@@ -186,7 +156,6 @@ watch(menuOpen, () => nextTick(syncHeaderHeightVar))
         <router-view />
       </ErrorBoundary>
     </main>
-    <!-- ปุ่มลอยตะกร้าเปรียบเทียบ — ห่อด้วย <nav> เพื่อให้เป็น landmark เช่นกัน -->
     <nav :aria-label="langs('navCompare')" class="print:hidden">
     <router-link
       v-if="route.path !== '/compare'"
@@ -208,7 +177,6 @@ watch(menuOpen, () => nextTick(syncHeaderHeightVar))
     </router-link>
     </nav>
 
-    <!-- footer -->
     <footer
       class="relative text-white/90 print:hidden bg-cover bg-center bg-no-repeat"
       style="background-image: url('/footer-bg.png')"
@@ -260,7 +228,6 @@ watch(menuOpen, () => nextTick(syncHeaderHeightVar))
         </div>
       </div>
 
-      <!-- เว้นพื้นที่ด้านขวาสำหรับปุ่มเปรียบเทียบที่มีข้อความ มือถือเว้นด้านล่าง -->
       <div class="relative w-full px-4 pt-4 pb-20 sm:pb-4 flex flex-col-reverse sm:flex-row items-center gap-3 justify-between"
         :class="compareStore.items.length > 0 ? 'sm:pr-64' : 'sm:pr-20'">
         <p class="text-xs text-white/60">© {{ new Date().getFullYear() }} www.dtc.co.th {{ langs('footerText') }}</p>

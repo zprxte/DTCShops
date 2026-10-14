@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// จัดการเนื้อหา footer (ข้อมูลบริษัท / เมนู / ใบรับรอง / โซเชียล)
 import { onMounted, ref } from 'vue'
 import TableRowsSkeleton from '../../components/common/TableRowsSkeleton.vue'
 import { Plus, SquarePen, Trash2 } from 'lucide-vue-next'

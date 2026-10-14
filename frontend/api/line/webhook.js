@@ -1,11 +1,9 @@
-// Webhook ของบอท LINE บน Vercel — ตั้ง Webhook URL ใน LINE Developers เป็น https://<โดเมน>/api/line/webhook
-// ตัวบอทอยู่ใน line/handler.js (ตัวเดียวกับ npm run bot) · ค่าจาก env ของโปรเจกต์ Vercel:
-//   LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN, API_ORIGIN, WEB_BASE_URL
-// ต่างจาก npm run bot: ต้องตอบ LINE หลังประมวลผลเสร็จ — function ถูกหยุดทันทีที่ส่ง response
+// Webhook ของบอท LINE บน Vercel (https://<โดเมน>/api/line/webhook) — ต้องตอบ LINE หลังประมวลผลเสร็จ เพราะ function หยุดทันทีที่ส่ง response
 import { botFromEnv } from '../../../line/handler.js'
 
 const bot = botFromEnv()
 
+// รับ event จาก LINE → handler.js
 export async function POST(request) {
   const raw = Buffer.from(await request.arrayBuffer())
   const done = bot.handleWebhook(raw, request.headers.get('x-line-signature'))
@@ -14,6 +12,7 @@ export async function POST(request) {
   return new Response('ok')
 }
 
+// ใช้ตรวจว่า endpoint ยังทำงาน
 export function GET() {
   return new Response('ok')
 }

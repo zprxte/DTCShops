@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// โครงหน้าแอดมิน: sidebar ย่อ/ขยายได้ + แถบบน (เมนูผู้ใช้ + เวลาหมดอายุ token)
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -8,14 +9,7 @@ import {
 import { useAuthStore } from '../../stores/auth'
 import ErrorBoundary from '../common/ErrorBoundary.vue'
 
-// Full sidebar tree — mirrors the reference back-office's own shape 1:1
-// (spd-demo.dtc.co.th): a top-level link ("หน้าแรก"), several collapsible
-// groups (each expands to its own sub-pages, the active child marked with a
-// dot + blue text, the parent pill-highlighted whenever any child route is
-// active), then two more top-level links at the end. "คุณสมบัติสินค้า" in
-// the "สินค้า" group has no reference equivalent — it's this project's own
-// spec/Attribute feature, kept since it's real functionality, just slotted
-// into the group it belongs with.
+// เมนู sidebar ตามหลังบ้านต้นแบบ (spd-demo :3304)
 interface NavLink { type: 'link'; to: string; label: string; icon: unknown }
 interface NavGroup { type: 'group'; label: string; icon: unknown; children: { to: string; label: string }[] }
 
@@ -59,35 +53,28 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-// One open/closed flag per group, keyed by label. Starts expanded whenever
-// the current page is one of that group's own children (e.g. landing on
-// /admin/categories directly via a bookmark), and stays however the admin
-// last left it after that.
+// กลุ่มเมนูเปิดอยู่ไหม — เริ่มเปิดถ้าหน้าปัจจุบันอยู่ในกลุ่มนั้น
 const groupOpen = reactive<Record<string, boolean>>({})
 for (const item of NAV_ITEMS) {
   if (item.type === 'group') groupOpen[item.label] = item.children.some((c) => route.path.startsWith(c.to))
 }
+// มีหน้าลูกของกลุ่มนี้กำลังเปิดอยู่ไหม
 function isGroupActive(group: NavGroup) {
   return group.children.some((c) => route.path.startsWith(c.to))
 }
 
-// Sidebar collapse — toggled by the topbar hamburger button, matching the
-// reference back-office's own layout shape (spd-demo.dtc.co.th).
 const collapsed = ref(false)
 
-// User menu dropdown in the topbar (replaces the old username+logout block
-// that used to sit at the bottom of the sidebar).
 const userMenuOpen = ref(false)
 const userMenuRef = ref<HTMLElement | null>(null)
+// คลิกนอกเมนูผู้ใช้แล้วปิด
 function handleOutsideClick(e: MouseEvent) {
   if (userMenuRef.value && !userMenuRef.value.contains(e.target as Node)) userMenuOpen.value = false
 }
 onMounted(() => document.addEventListener('mousedown', handleOutsideClick))
 onBeforeUnmount(() => document.removeEventListener('mousedown', handleOutsideClick))
 
-// Live countdown under the "DTC Admin" logo — `now` ticks every second so
-// the label re-renders; the deadline itself still comes straight from the
-// JWT's own `exp` claim, no separate refresh-time tracking needed.
+// นับถอยหลังเวลาหมดอายุ token (จาก exp ของ JWT) อัปเดตทุกวินาที
 const now = ref(new Date())
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -114,6 +101,7 @@ const expiresAtLabel = computed(() => {
   return `เซสชันจะหมดอายุใน ${countdown}`
 })
 
+// ออกจากระบบแล้วกลับหน้าล็อกอิน
 function handleLogout() {
   auth.logout()
   router.push('/admin/login')
@@ -121,13 +109,8 @@ function handleLogout() {
 </script>
 
 <template>
-  <!-- h-screen (not min-h-screen) + overflow-hidden pins this whole layout to
-       the viewport height. Without that, a tall table in <main> would grow
-       the entire flex row taller than the screen — including this sidebar —
-       pushing content below the fold along with it. Only <main> scrolls. -->
+  <!-- h-screen + overflow-hidden ตรึงความสูงเท่าจอ ให้เลื่อนแค่ <main> -->
   <div class="h-screen flex bg-gray-50 overflow-hidden">
-    <!-- Sidebar — collapses to icon-only via the topbar hamburger, matching
-         the reference back-office's own shape (spd-demo.dtc.co.th). -->
     <aside :class="['shrink-0 bg-white border-r flex flex-col transition-all duration-200', collapsed ? 'w-16' : 'w-60']">
       <div class="px-4 py-4 border-b overflow-hidden">
         <router-link to="/admin/" class="text-lg font-bold text-brand-700 whitespace-nowrap">
@@ -137,10 +120,7 @@ function handleLogout() {
       </div>
       <nav aria-label="เมนูหลักของผู้ดูแลระบบ" class="flex-1 px-2 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
         <template v-for="item in NAV_ITEMS" :key="item.label">
-          <!-- Plain top-level link — isExactActive (not isActive) because
-               "หน้าแรก" resolves to /admin/, a PREFIX of every other admin
-               page (/admin/products, /admin/categories, ...); isActive alone
-               would keep it highlighted on every single admin page. -->
+          <!-- isExactActive เพราะ /admin/ เป็น prefix ของทุกหน้าแอดมิน -->
           <router-link v-if="item.type === 'link'" :to="item.to" v-slot="{ isExactActive }" custom>
             <a
               :href="item.to"
@@ -156,7 +136,6 @@ function handleLogout() {
             </a>
           </router-link>
 
-          <!-- Collapsible group -->
           <template v-else>
             <button
               type="button"
@@ -196,8 +175,6 @@ function handleLogout() {
         </template>
       </nav>
 
-      <!-- Logout — also in the topbar user menu; kept here too since this is
-           where it originally lived, at the user's request. -->
       <div class="px-2 py-3 border-t shrink-0">
         <button
           @click="handleLogout"
@@ -211,8 +188,6 @@ function handleLogout() {
     </aside>
 
     <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Topbar — hamburger toggles the sidebar, user menu replaces the old
-           username+logout block that used to sit at the bottom of the sidebar. -->
       <header class="h-14 shrink-0 bg-white border-b flex items-center justify-between px-4">
         <button
           @click="collapsed = !collapsed"

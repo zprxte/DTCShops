@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// ธงชาติแบบ SVG สำหรับปุ่มเปลี่ยนภาษา
 import { computed } from 'vue'
 import type { Lang } from '../../language/translations'
 

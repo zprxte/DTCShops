@@ -1,7 +1,8 @@
+// ตรวจแถวจากไฟล์ Excel เทียบกับ DB แล้วสร้างแผนนำเข้า (สร้าง/แก้/ไม่เปลี่ยน/ผิด) — ไม่เขียน DB
 const Fuse = require('fuse.js')
 const { cleanText, safeUrl } = require('./sanitize')
 
-// คอลัมน์ในไฟล์ (ลำดับนี้คือลำดับในเทมเพลตด้วย) — หัวคอลัมน์ในไฟล์คือ key ภาษาอังกฤษ
+// คอลัมน์ข้อมูลสินค้าในไฟล์ (เรียงตามเทมเพลต)
 const PRODUCT_COLUMNS = [
   { key: 'product_id', label: 'รหัสสินค้า', width: 14, example: 'itm-0000003 (เว้นว่าง = สินค้าใหม่)' },
   { key: 'sku', label: 'SKU', width: 14, example: 'PROD-001' },
@@ -24,20 +25,19 @@ const SPEC_COLUMNS = [
   { key: 'value', label: 'ค่า', width: 44, example: '1080p' },
 ]
 
-// ชื่อฟิลด์ที่แสดงในหน้าพรีวิว (คอลัมน์ "เปลี่ยนอะไร")
 const FIELD_LABELS = Object.fromEntries(PRODUCT_COLUMNS.map((c) => [c.key, c.label]))
-// รูปที่อ้างถึงไฟล์ในระบบอยู่แล้ว (ค่าที่เทมเพลตเติมให้) กับลิงก์ภายนอกที่ต้องดาวน์โหลด
 const LOCAL_IMAGE = /^\/uploads\/[^?#]+$/
+// ค่าเป็นลิงก์ภายนอกที่ต้องดาวน์โหลดไหม
 const isRemoteImage = (value) => /^https?:\/\//i.test(String(value ?? ''))
 const LINK_FIELDS = ['shopee_link', 'lazada_link', 'tiktok_link', 'line_link']
 const MAX_VALUE_LENGTH = 255
 
-// เทียบชื่อแบบไม่สนตัวพิมพ์และช่องว่างซ้ำ — "Wi-Fi  " กับ "wi-fi" ถือเป็นหัวข้อเดียวกัน
+// เทียบชื่อแบบไม่สนตัวพิมพ์และช่องว่างซ้ำ
 function normName(text) {
   return String(text ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
-// ตัวเลขจากเซลล์ — รับทั้ง number และข้อความอย่าง "1,990" / "฿1,990"
+// ตัวเลขจากเซลล์ — รับ "1,990" / "฿1,990" ด้วย
 function parseNumber(value) {
   if (value === null || value === undefined || value === '') return null
   if (typeof value === 'number') return value
@@ -45,6 +45,7 @@ function parseNumber(value) {
   return Number.isNaN(n) ? NaN : n
 }
 
+// แท็กคั่นคอมม่า → ตัดซ้ำ/ช่องว่าง
 function normalizeTags(text) {
   return String(text ?? '')
     .split(',')
@@ -53,7 +54,7 @@ function normalizeTags(text) {
     .join(', ')
 }
 
-// ตรวจแถวชีต "สินค้า" ทีละแถว
+// ตรวจแถวสินค้าทีละแถว → action + errors + changes
 function planProducts(rows, snapshot) {
   const categoriesByName = new Map()
   for (const c of snapshot.categories) {
@@ -62,13 +63,12 @@ function planProducts(rows, snapshot) {
   }
   const categoryName = (id) => snapshot.categories.find((c) => c.category_id === id)?.category_name ?? null
 
-  // SKU ของสินค้าอื่นในระบบ — ใช้เช็คซ้ำ (SKU ว่างไม่นับ)
   const skuOwner = new Map()
   for (const p of snapshot.products.values()) if (p.sku) skuOwner.set(normName(p.sku), p.product_id)
 
-  const seenIds = new Map() // รหัส → ตำแหน่งแถวแรกที่ใช้
-  const seenSkus = new Map() // sku → แถวแรกในไฟล์ที่ใช้
-  const newNames = new Map() // ชื่อสินค้าใหม่ → แถว (ชีตสเปคอ้างสินค้าใหม่ด้วยชื่อ)
+  const seenIds = new Map()
+  const seenSkus = new Map()
+  const newNames = new Map()
 
   return rows.map((raw) => {
     const errors = []
@@ -79,12 +79,12 @@ function planProducts(rows, snapshot) {
     if (id) {
       if (!existing) errors.push(`ไม่พบสินค้ารหัส ${id}`)
       else if (!existing.is_active) errors.push(`สินค้า ${id} ถูกลบอยู่ — กู้คืนก่อนถึงจะแก้ผ่าน Excel ได้`)
-      // คัดลอกแถวสินค้าเดิมไปทำสินค้าใหม่แล้วลืมลบรหัส — บอกแถวต้นทางและวิธีแก้
+      // คัดลอกแถวเดิมแล้วลืมลบรหัส — บอกแถวต้นทางและวิธีแก้
       if (seenIds.has(id)) errors.push(`แถวนี้มีรหัสสินค้าเดียวกับ ${seenIds.get(id)} (${id}) — ถ้าคัดลอกแถวมาทำสินค้าใหม่ ให้ลบค่าในช่อง product_id ของแถวนี้`)
       else seenIds.set(id, raw.row)
     }
 
-    // ค่าที่จะเขียน — undefined = ไม่แตะ (ช่องว่าง)
+    // undefined = ไม่แตะ (ช่องว่าง)
     const next = {}
     const name = cleanText(raw.product_name, 255)
     if (name) next.product_name = name
@@ -137,8 +137,7 @@ function planProducts(rows, snapshot) {
     const description = cleanText(raw.description, 20000)
     if (description) next.description = description
 
-    // รูปภาพหลัก — ค่าเดิมจากเทมเพลตเป็น path ในระบบ (/uploads/...) ส่วนลิงก์ใหม่ต้องดาวน์โหลด
-    // snapshot.imageChecks คือผลตรวจที่ route ทำไว้ก่อน (ลองโหลดจริง / ไฟล์มีอยู่จริง)
+    // รูป: ค่าเดิมเป็น /uploads/... · ลิงก์ใหม่ใช้ผลตรวจที่ route โหลดไว้ใน snapshot.imageChecks
     const image = cleanText(raw.product_image, 500)
     if (image && image !== existing?.product_image) {
       if (!isRemoteImage(image) && !LOCAL_IMAGE.test(image)) {
@@ -149,7 +148,7 @@ function planProducts(rows, snapshot) {
         else next.product_image = image
       }
     } else if (image) {
-      next.product_image = image // เท่าค่าเดิม — ถูกกรองออกตอนเทียบด้านล่าง
+      next.product_image = image
     }
 
     if (!id && name) {
@@ -163,8 +162,7 @@ function planProducts(rows, snapshot) {
       return plan
     }
 
-    // เก็บเฉพาะฟิลด์ที่ค่าต่างจากเดิมจริง — เปิดเทมเพลตแล้วอัปโหลดกลับโดยไม่แก้อะไร
-    // ต้องได้ "ไม่เปลี่ยน" ทุกแถว ไม่ใช่เขียนทับทั้งแคตตาล็อก
+    // เก็บเฉพาะฟิลด์ที่ต่างจริง — อัปโหลดเทมเพลตกลับโดยไม่แก้ต้องได้ "ไม่เปลี่ยน" ทุกแถว
     for (const [field, to] of Object.entries(next)) {
       const from = existing ? existing[field] ?? null : null
       if (existing && String(from ?? '') === String(to)) continue
@@ -177,31 +175,21 @@ function planProducts(rows, snapshot) {
   })
 }
 
-// หัวข้อที่ชื่อใกล้เคียง — ใช้ตอบ "หมายถึง … ใช่ไหม?" ในหน้าพรีวิว
-// ---------- แนะนำหัวข้อสำหรับชื่อที่ไม่รู้จัก ----------
-// เทียบแค่ชื่อไม่พอ: หัวคอลัมน์ "Resolution" กับหัวข้อ "ความละเอียดกล้อง" ไม่มีตัวอักษรร่วมกันเลย
-// (ผู้ใช้เจอ 25 ก.ย. 2026) จึงให้คะแนนจาก 3 ทาง แล้วเอาคะแนนสูงสุด:
-//   1. ค่าคล้ายกัน — ค่าในไฟล์ (1080P) หน้าตาเหมือนค่าที่หัวข้อนั้นเก็บอยู่ (1080P (1920X1080)) ไม่สนภาษาของชื่อ
-//   2. ชื่อคล้ายกัน — ชื่อซ้อนกัน หรือ fuse.js
-//   3. โบนัสถ้าสินค้าในหมวดเดียวกันใช้หัวข้อนั้นอยู่แล้ว
+// แนะนำหัวข้อให้ชื่อที่ไม่รู้จัก — เทียบชื่ออย่างเดียวไม่พอ ("Resolution" กับ "ความละเอียดกล้อง" ไม่มีตัวอักษรร่วมกัน)
 
-// ค่าที่บอกอะไรเกี่ยวกับหัวข้อไม่ได้ (ทุกหัวข้อแบบ มี/ไม่มี มีค่าแบบนี้)
+// ค่ากว้างๆ ที่ใช้เดาหัวข้อไม่ได้
 const GENERIC_VALUES = new Set(['มี', 'ไม่มี', 'yes', 'no', '-', '✓', '✗', 'x', 'true', 'false', '0', '1'])
 
-// แยกค่าเป็นชิ้น 3 ชุด:
-//   exact — ชิ้นที่มีตัวอักษร (1080p, ip67, 128gb) · ตัวเลขเปล่าๆ ไม่นับ ("150" ไปตรงกับ "150 mA" แบบบังเอิญ)
-//   shape — แทนเลขแต่ละหลักด้วย # (####p, ###g, ##°c) จับค่าชนิดเดียวกันที่ตัวเลขต่างกัน
-//            นับจำนวนหลักด้วย ไม่งั้นน้ำหนัก 150g (###g) ไปตรงกับเครือข่าย 4G (#g)
-//   loose  — เลขทุกชุดเป็น # ตัวเดียว ใช้เฉพาะรูปที่มีโครงพอ เช่น ขนาด #x#x#mm
+// แยกค่าเป็นชิ้น exact (1080p) / shape (####p นับจำนวนหลัก) / loose (#x#x#mm) — ตัวเลขเปล่าไม่นับเพราะบังเอิญตรงง่าย
 function valueTokens(value) {
   let text = String(value ?? '').toLowerCase().trim()
   if (!text || GENERIC_VALUES.has(text)) return null
   text = text
-    .replace(/(\d),(?=\d{3}\b)/g, '$1') // 1,260 → 1260
-    .replace(/ํ/g, '°') // ใช้ "ํ" แทนองศา (20ํC)
-    .replace(/\b[lwhd](?=\d)/g, '') // L101 x W52 x H4 → 101 x 52 x 4
-    .replace(/(\d)\s*[x×*]\s*(?=\d)/g, '$1x') // 100 x 60 → 100x60
-    .replace(/(\d)\s+(°?[a-z]{1,4}\b|°)/g, '$1$2') // 150 g → 150g, 20 °c → 20°c
+    .replace(/(\d),(?=\d{3}\b)/g, '$1')
+    .replace(/ํ/g, '°')
+    .replace(/\b[lwhd](?=\d)/g, '')
+    .replace(/(\d)\s*[x×*]\s*(?=\d)/g, '$1x')
+    .replace(/(\d)\s+(°?[a-z]{1,4}\b|°)/g, '$1$2')
   const raw = text.match(/[a-z0-9฀-๿.°]+/g) || []
   const exact = new Set(raw.filter((t) => t.length >= 2 && /[a-z฀-๿°]/.test(t)))
   const numeric = raw.filter((t) => /\d/.test(t))
@@ -210,6 +198,7 @@ function valueTokens(value) {
   return exact.size || shape.size || loose.size ? { exact, shape, loose } : null
 }
 
+// สัดส่วนชิ้นที่ซ้ำกันของสองชุด
 function overlap(a, b) {
   if (!a.size || !b.size) return 0
   let hit = 0
@@ -238,8 +227,9 @@ function suggestionIndex(snapshot) {
   return { tokensByAttr, attrsByCategory, fuse }
 }
 
+// แนะนำ "หมายถึง … ใช่ไหม?" สูงสุด 3 หัวข้อ จากค่าคล้ายกัน / ชื่อคล้ายกัน / โบนัสหมวดเดียวกัน
 function suggestAttributes(entry, snapshot, index) {
-  const scores = new Map() // attribute_id → { score, reasons }
+  const scores = new Map()
   const bump = (id, score, reason) => {
     const key = String(id)
     const cur = scores.get(key) ?? { score: 0, reasons: new Set() }
@@ -248,7 +238,6 @@ function suggestAttributes(entry, snapshot, index) {
     scores.set(key, cur)
   }
 
-  // 1. ค่าคล้ายกัน
   const fileTokens = entry.values.map(valueTokens).filter(Boolean).slice(0, 20)
   if (fileTokens.length) {
     for (const [attr, list] of index.tokensByAttr) {
@@ -263,7 +252,6 @@ function suggestAttributes(entry, snapshot, index) {
     }
   }
 
-  // 2. ชื่อคล้ายกัน
   const n = normName(entry.name)
   for (const a of snapshot.attributes) {
     const m = normName(a.attribute_name)
@@ -271,7 +259,7 @@ function suggestAttributes(entry, snapshot, index) {
   }
   for (const r of index.fuse.search(String(entry.name))) bump(r.item.attribute_id, 0.85 * (1 - r.score), 'name')
 
-  // 3. หมวดเดียวกันใช้อยู่ — โบนัสให้ตัวที่ผ่านเกณฑ์ข้างบนแล้วเท่านั้น (ไม่ใช่ดันทุกหัวข้อของหมวดขึ้นมา)
+  // โบนัสหมวดเดียวกันให้เฉพาะตัวที่ผ่านเกณฑ์ข้างบนแล้ว
   const usedInCategory = new Set()
   for (const cat of entry.categories) for (const attr of index.attrsByCategory.get(cat) ?? []) usedInCategory.add(attr)
   for (const [attr, s] of scores) {
@@ -289,11 +277,7 @@ function suggestAttributes(entry, snapshot, index) {
     .map(([id, s]) => ({ attribute_id: byId.get(id).attribute_id, attribute_name: byId.get(id).attribute_name, reasons: [...s.reasons] }))
 }
 
-/**
- * ตรวจแถวชีต "สเปค"
- * snapshot.values: Map<`${itm_code}|${attribute_id}`, value> — เฉพาะค่าร่วม (model_code NULL)
- * attributeMap: { [ชื่อหัวข้อตามไฟล์]: { attribute_id } | { create: true } }
- */
+// ตรวจค่าคุณสมบัติทีละช่อง — หัวข้อที่ไม่รู้จักรอแอดมินเลือกผ่าน attributeMap
 function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
   const attrByName = new Map(snapshot.attributes.map((a) => [normName(a.attribute_name), a]))
   const attrById = new Map(snapshot.attributes.map((a) => [String(a.attribute_id), a]))
@@ -310,7 +294,7 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
     existingByName.set(key, existingByName.has(key) ? null : p) // null = ชื่อซ้ำ ใช้อ้างไม่ได้
   }
 
-  const unknown = new Map() // ชื่อหัวข้อที่ไม่มีในระบบ → { name, rows }
+  const unknown = new Map()
   const seenPairs = new Map()
 
   const specs = []
@@ -322,7 +306,7 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
     const spec = { row: raw.row, action: 'create', product_id: null, product_name: null, attribute_name: attrName, attribute_id: null, from: null, to: value, errors }
     specs.push(spec)
 
-    // ช่องค่าว่าง = ไม่แตะค่าเดิม (เหมือนชีต products) — ไม่นับเป็นข้อผิดพลาด
+    // ช่องว่าง = ไม่แตะค่าเดิม
     if (!value) {
       spec.action = 'skip'
       continue
@@ -330,11 +314,9 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
     if (value.length > MAX_VALUE_LENGTH) errors.push(`ค่ายาวเกิน ${MAX_VALUE_LENGTH} ตัวอักษร`)
     if (!attrName) errors.push('ไม่ได้ระบุหัวข้อสเปค')
 
-    // หาว่าแถวนี้เป็นของสินค้าไหน
     const id = cleanText(raw.product_id, 50)
     const name = cleanText(raw.product_name, 255)
-    let productKey = null // ใช้กันคู่ (สินค้า, หัวข้อ) ซ้ำ
-    // คอลัมน์คุณสมบัติในชีตหมวดหมู่ — ผูกกับแถวสินค้าแถวเดียวกันตรงๆ ไม่ต้องจับคู่ด้วยชื่อ
+    let productKey = null
     const owner = raw.product_row != null ? planByRow.get(String(raw.product_row)) : null
     if (owner && !owner.product_id) {
       spec.product_name = owner.product_name
@@ -375,7 +357,6 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
       errors.push('ต้องระบุรหัสสินค้า หรือชื่อสินค้าใหม่ที่อยู่ในไฟล์')
     }
 
-    // หาหัวข้อสเปค
     if (attrName) {
       const known = attrByName.get(normName(attrName))
       if (known) {
@@ -384,7 +365,6 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
       } else {
         const entry = unknown.get(normName(attrName)) ?? { name: attrName, rows: [] }
         entry.rows.push(raw.row)
-        // เก็บค่าและหมวดของสินค้าไว้ให้ตัวแนะนำ (ค่าคล้ายกัน / หมวดเดียวกันใช้)
         entry.values ??= []
         entry.categories ??= new Set()
         if (value) entry.values.push(value)
@@ -402,7 +382,7 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
           spec.attribute_name = chosen.attribute_name
           spec.mapped_from = attrName
         } else {
-          spec.action = 'pending' // รอแอดมินเลือกในหน้าพรีวิว
+          spec.action = 'pending'
         }
       }
     }
@@ -434,7 +414,6 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
   const unknownList = [...unknown.values()].map((u) => ({
     name: u.name,
     rows: u.rows,
-    // ตัวอย่างค่าในไฟล์ ให้แอดมินเห็นประกอบการตัดสินใจว่าหมายถึงหัวข้อไหน
     samples: [...new Set(u.values ?? [])].slice(0, 3).map((v) => String(v).slice(0, 60)),
     suggestions: suggestAttributes(u, snapshot, index),
     resolution: resolution.get(normName(u.name)) ?? null,
@@ -442,6 +421,7 @@ function planSpecs(rows, snapshot, productPlans, attributeMap = {}) {
   return { specs: specs.filter((s) => s.action !== 'skip'), unknown_attributes: unknownList }
 }
 
+// รวมแผนสินค้า + สเปค + สรุปจำนวน + ready (พร้อมบันทึกไหม)
 function buildPlan(rows, snapshot, attributeMap) {
   const products = planProducts(rows.products || [], snapshot)
   const { specs, unknown_attributes } = planSpecs(rows.specs || [], snapshot, products, attributeMap)

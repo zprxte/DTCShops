@@ -6,10 +6,7 @@ import { adminAPI, resolveImageUrl } from '../../services/api'
 import { toast } from '../../stores/toast'
 import ConfirmDialog from '../../components/common/ConfirmDialog.vue'
 
-// เพิ่ม/แก้ไขแบนเนอร์ — หน้าฟอร์มเดี่ยว (ไม่ใช่ popup อีกต่อไป) ตามภาพอ้างอิง
-// dtcshops.com seller center ที่ผู้ใช้ส่งมา ("หน้าแรก > แบนเนอร์ > ฟอร์มข้อมูล")
-// ใช้แพทเทิร์นเดียวกับ AdminProductEditPage.vue — component เดียวรองรับทั้ง
-// สร้าง/แก้ไข (isNew = !route.params.id)
+// ฟอร์มเพิ่ม/แก้ไขแบนเนอร์ (isNew = ไม่มี :id)
 
 const route = useRoute()
 const router = useRouter()
@@ -46,12 +43,10 @@ const loading = ref(true)
 const saving = ref(false)
 const pendingImageDelete = ref(false)
 
-// รายชื่อแบนเนอร์อื่นทั้งหมด (ไม่รวมตัวเอง) — ใช้หาว่าลำดับที่กดถูกใครถืออยู่
-// กดลำดับที่มีเจ้าของอยู่แล้ว = "สลับลำดับ" กับเจ้าของเดิม ไม่ใช่บล็อกไม่ให้กด
-// (ข้อมูลจริงมีหลายแถวที่ index ซ้ำกันมาก่อนแล้ว ดู routes/banners.js's
-// tiebreak comment — ฟีเจอร์นี้ช่วยจัดให้ไม่ซ้ำกันทีละคู่เมื่อแอดมินแก้เอง)
+// แบนเนอร์อื่นทั้งหมด — ใช้หาว่าลำดับที่กดมีใครถืออยู่
 const otherBanners = ref<BannerRow[]>([])
 const selfId = () => (isNew() ? null : String(route.params.id))
+// แบนเนอร์ที่ถือลำดับ n อยู่
 function ownerOf(n: number): BannerRow | undefined {
   return otherBanners.value.find((b) => Number(b.bnn_slide_index) === n)
 }
@@ -93,6 +88,7 @@ async function load() {
 }
 load()
 
+// อัปโหลดรูปแบนเนอร์
 async function handleImageFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   ;(e.target as HTMLInputElement).value = ''
@@ -108,17 +104,13 @@ async function handleImageFile(e: Event) {
     uploadingImage.value = false
   }
 }
+// ยืนยันก่อนลบรูป
 function confirmImageDelete() {
   image.value = null
   pendingImageDelete.value = false
 }
 
-// กดปุ่ม "ลำดับ N" — ถ้าลำดับนั้นมีแบนเนอร์อื่นถืออยู่ ให้สลับลำดับกัน (เจ้าของ
-// เดิมย้ายไปถือลำดับที่ฟอร์มนี้ใช้อยู่ก่อนหน้า) แทนที่จะบล็อกไม่ให้กด — ต้อง
-// เขียนกลับเข้า DB ทันทีที่เจ้าของเดิม (ไม่ใช่แค่ local state) เพราะแบนเนอร์
-// ตัวนั้นเป็นแถวที่บันทึกอยู่แล้วจริง ไม่งั้นบันทึกฟอร์มนี้แล้วจะเกิดลำดับซ้ำ
-// กันอีกเหมือนเดิม — ส่ง field เดิมของเจ้าของครบทุกตัว เพราะ PUT ทับทั้งแถว
-// ไม่ใช่ partial update
+// กดลำดับที่มีเจ้าของ = สลับลำดับกัน (บันทึกเจ้าของเดิมลง DB ทันทีแบบส่งครบทุกฟิลด์ เพราะ PUT ทับทั้งแถว)
 async function selectIndex(n: number) {
   if (n === form.bnn_slide_index || swapping.value) return
   const owner = ownerOf(n)
@@ -148,6 +140,7 @@ async function selectIndex(n: number) {
   form.bnn_slide_index = n
 }
 
+// บันทึกแบนเนอร์
 async function handleSubmit() {
   if (!form.bnn_slide_desc.trim()) {
     toast.error('กรุณากรอกข้อมูลที่จำเป็นให้ครบ')
