@@ -46,3 +46,8 @@ backend/test/
 e2e/
 line/test/
 mobile/test/
+
+dtc-shop-backend/
+dtc-shops-backoffice/
+dtc-shops-frontend/
+database/DTCShop_db.sql
