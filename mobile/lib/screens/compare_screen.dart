@@ -344,9 +344,6 @@ class _CompareTable extends StatelessWidget {
     }
 
     var rows = names;
-    if (effective.onlySelected && features.isNotEmpty) {
-      rows = rows.where(features.contains).toList();
-    }
     if (effective.onlyDifferences) {
       rows = rows.where((name) => !sameNames.contains(name)).toList();
     }
@@ -432,8 +429,6 @@ class _CompareTable extends StatelessWidget {
               child: Text(
                 names.isEmpty
                     ? langs('compareNoSpecs')
-                    : effective.onlySelected
-                    ? langs('compareNoFilteredRows')
                     : langs('compareAllSame'),
                 style: const TextStyle(color: AppColors.muted),
               ),

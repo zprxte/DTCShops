@@ -18,7 +18,6 @@ class CompareFilter {
     this.sortField = compareSortNone,
     this.sortAscending = false,
     this.onlyDifferences = false,
-    this.onlySelected = false,
   });
 
   final Set<String> features;
@@ -29,35 +28,28 @@ class CompareFilter {
 
   final bool onlyDifferences;
 
-  // แสดงเฉพาะแถวที่ติ๊ก (มีเฉพาะแอป จอเล็กเลื่อนหาหัวข้อนาน)
-  final bool onlySelected;
-
   bool get isActive =>
       features.isNotEmpty ||
       sortField != compareSortNone ||
-      onlyDifferences ||
-      onlySelected;
+      onlyDifferences;
 
   // ตัวเลขบนปุ่มตัวกรอง (การเรียงมากับการติ๊กอยู่แล้ว ไม่นับซ้ำ)
   int get badgeCount =>
       features.length +
       (sortField == compareSortPrice ? 1 : 0) +
-      (onlyDifferences ? 1 : 0) +
-      (onlySelected ? 1 : 0);
+      (onlyDifferences ? 1 : 0);
 
   CompareFilter copyWith({
     Set<String>? features,
     String? sortField,
     bool? sortAscending,
     bool? onlyDifferences,
-    bool? onlySelected,
   }) {
     return CompareFilter(
       features: features ?? this.features,
       sortField: sortField ?? this.sortField,
       sortAscending: sortAscending ?? this.sortAscending,
       onlyDifferences: onlyDifferences ?? this.onlyDifferences,
-      onlySelected: onlySelected ?? this.onlySelected,
     );
   }
 }
@@ -114,7 +106,6 @@ class _CompareFilterSheetState extends State<_CompareFilterSheet> {
   late String _sortField = widget.current.sortField;
   late bool _sortAscending = widget.current.sortAscending;
   late bool _onlyDifferences = widget.current.onlyDifferences;
-  late bool _onlySelected = widget.current.onlySelected;
 
   // ติ๊กคุณสมบัติที่เรียงได้ = ตั้งเป็นตัวเรียง (มาก→น้อย) แบบเว็บ
   void _toggleFeature(String name) {
@@ -157,7 +148,6 @@ class _CompareFilterSheetState extends State<_CompareFilterSheet> {
       _sortField = compareSortNone;
       _sortAscending = false;
       _onlyDifferences = false;
-      _onlySelected = false;
     });
   }
 
@@ -185,8 +175,6 @@ class _CompareFilterSheetState extends State<_CompareFilterSheet> {
           sortField: _sortField,
           sortAscending: _sortAscending,
           onlyDifferences: _onlyDifferences,
-          // ไม่มีอะไรติ๊กไว้ = เปิดโหมดนี้ไม่ได้ (ตารางจะว่าง)
-          onlySelected: _features.isEmpty ? false : _onlySelected,
         ),
       ),
       children: [
@@ -215,18 +203,6 @@ class _CompareFilterSheetState extends State<_CompareFilterSheet> {
           contentPadding: EdgeInsets.zero,
           title: Text(
             langs('compareOnlyDiff'),
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        SwitchListTile(
-          value: _onlySelected,
-          onChanged: _features.isEmpty
-              ? null
-              : (value) => setState(() => _onlySelected = value),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(
-            langs('compareOnlySelected'),
             style: const TextStyle(fontSize: 14),
           ),
         ),

@@ -26,7 +26,7 @@ async function writeLog(prisma, { type, page, message, user_id }) {
   }
 }
 
-// บันทึกการเข้าดูสินค้า — ใช้ slug เป็นตัวระบุเหมือนข้อมูลจริง
+// บันทึกการเข้าดูสินค้า — slug อยู่ทั้งใน message และ user_id (แดชบอร์ดเว็บจริงนับจาก user_id)
 function logProductView(prisma, product) {
   const key = product?.slug || product?.itm_code
   if (!key) return
@@ -34,6 +34,7 @@ function logProductView(prisma, product) {
     type: 'view',
     page: PRODUCT_VIEW_PAGE,
     message: `การเข้าดูสินค้า : ${key}`,
+    user_id: key,
   })
 }
 
