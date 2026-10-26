@@ -41,12 +41,12 @@ export function validSignature(raw, sig) {
 }
 
 // สร้างบอท — webBase/imageBase เป็นฟังก์ชันเพราะ npm run bot รู้ URL ของ tunnel หลังเปิดแล้ว
-export function createBot({ api: apiOrigin, webBase, imageBase }) {
+export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/product/' }) {
   const API = apiOrigin.replace(/\/$/, '');
 
   const ctx = {
-    imageUrl: (p) => (p && imageBase() ? imageBase() + encodeURI(p.startsWith('/') ? p : '/uploads/' + p) : null),
-    webUrl: (p) => (webBase() ? `${webBase()}/product/${encodeURIComponent(p.slug || p.product_id)}` : null),
+    imageUrl: (p) => (p && imageBase() ? imageBase() + encodeURI(p.startsWith('/') ? p : '/api/image/' + p) : null),
+    webUrl: (p) => (webBase() ? `${webBase()}${productPath}${encodeURIComponent(p.slug || p.product_id)}` : null),
   };
 
   // เรียก API ของระบบแล้วคืน JSON
@@ -212,6 +212,12 @@ export function createBot({ api: apiOrigin, webBase, imageBase }) {
   return { handleWebhook };
 }
 
+// path หน้าสินค้าบนเว็บ: ระบบนี้ /product/<slug> · เว็บจริง (dtcshops.com) /product/detail/<slug>
+export function webProductPath() {
+  const p = envValue('WEB_PRODUCT_PATH') || '/product/';
+  return (p.startsWith('/') ? p : '/' + p).replace(/\/?$/, '/');
+}
+
 // สร้างบอทจากค่า env (Vercel / --no-tunnel ที่ URL ไม่เปลี่ยนระหว่างรัน)
 export function botFromEnv() {
   const web = envValue('WEB_BASE_URL').replace(/\/$/, '');
@@ -220,5 +226,6 @@ export function botFromEnv() {
     api: envValue('API_ORIGIN') || 'http://localhost:4000',
     webBase: () => web,
     imageBase: () => images,
+    productPath: webProductPath(),
   });
 }

@@ -3,7 +3,7 @@ import http from 'http';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { loadLineEnv, envValue, line } from './env.js';
-import { createBot } from './handler.js';
+import { createBot, webProductPath } from './handler.js';
 import { setupRichMenu } from './setup-richmenu.js';
 
 const PORT = Number(envValue('BOT_PORT') || 4100);
@@ -15,7 +15,7 @@ let webBase = WEB;
 let proxyWeb = false;
 let publicUrl = envValue('PUBLIC_BASE_URL').replace(/\/$/, '');
 
-const bot = createBot({ api: API, webBase: () => webBase, imageBase: () => publicUrl });
+const bot = createBot({ api: API, webBase: () => webBase, imageBase: () => publicUrl, productPath: WEB ? webProductPath() : '/product/' }); // ไม่ตั้ง WEB = เปิดหน้าเว็บ dev ของระบบนี้
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
