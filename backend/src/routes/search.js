@@ -401,7 +401,7 @@ router.get('/', async (req, res) => {
       : candidateRows.filter((item) => wantedTags.every((tag) => hasTag(item, tag)))
     // ดึงโมเดลครั้งเดียวต่อ request — toResults ถูกเรียกซ้ำได้หลายรอบตอนกู้แป้น
     const modelIndex = await loadModelIndex(candidates, prisma)
-    const toResults = (term) => searchProducts(candidates, term).map(({ item, ...match }) => ({
+    const toResults = (term, options) => searchProducts(candidates, term, options).map(({ item, ...match }) => ({
       ...cardShape(item, modelIndex),
       ...match,
     }))
@@ -465,6 +465,8 @@ router.get('/', async (req, res) => {
         break
       }
     }
+    // ยังไม่เจอ: ให้คำสุดท้ายตรงต้นคำได้ ("dash" → "Dash Cam" ที่ดัชนีเก็บเป็น dashcam)
+    if (results.length === 0) results = toResults(effectiveTerm, { autocomplete: true, prefixMin: 3 })
 
     const sortFns = {
       relevance: (a, b) =>
