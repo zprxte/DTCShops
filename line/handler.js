@@ -65,7 +65,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/
   // ส่งต่อเจ้าหน้าที่ — ข้อความถัดไปที่ไม่ขึ้นต้นด้วย "ค้นหา:" ไปถึงเจ้าหน้าที่ใน Chat อยู่แล้ว
   async function handoff(token) {
     return reply(token, text('ส่งเรื่องให้เจ้าหน้าที่แล้วครับ พิมพ์รายละเอียดเพิ่มได้เลย เจ้าหน้าที่จะตอบในแชตนี้', {
-      quickReply: quickReply([searchButton, { label: 'สินค้าแนะนำ' }, { label: 'หมวดหมู่สินค้า' }]),
+      quickReply: quickReply([searchButton, { label: 'สินค้าทั้งหมด' }, { label: 'หมวดหมู่สินค้า' }]),
     }));
   }
 
@@ -128,6 +128,21 @@ export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/
     return reply(token, [text(intro), shopCarousel(part, ctx, intro, more)]);
   }
 
+  // ส่งสินค้าทั้งหมดเรียงยอดนิยม ชุดละ 11 ใบ + การ์ดดูเพิ่มเติม
+  async function onAll(token, page = 1) {
+    const r = await api(`/api/products?sort=popular&limit=${SEARCH_PAGE}&page=${page}`);
+    const part = r.products || [];
+    if (!part.length) return reply(token, text(page > 1 ? 'แสดงสินค้าครบแล้วครับ' : 'ไม่พบสินค้าครับ'));
+    const from = (page - 1) * SEARCH_PAGE;
+    const to = from + part.length;
+    const remaining = r.total - to;
+    const more = remaining > 0 ? { remaining, data: `all=${page + 1}` } : null;
+    const intro = page > 1
+      ? `สินค้าที่ ${from + 1}–${to} จาก ${r.total} ครับ`
+      : `สินค้าทั้งหมด ${r.total} รายการ เรียงจากยอดนิยมครับ กด “ดูคุณสมบัติ” เพื่อดูสเปค`;
+    return reply(token, [text(intro), productCarousel(part, ctx, intro, more)]);
+  }
+
   // ตอบข้อความที่ผู้ใช้พิมพ์/กดเมนู
   async function onText(ev) {
     const msg = ev.message.text.trim();
@@ -141,6 +156,8 @@ export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/
         const r = await api('/api/products?sort=popular&limit=10');
         return sendProducts(token, r.products, 'สินค้ายอดนิยมครับ ปัดดูได้เลย กด “ดูคุณสมบัติ” เพื่อดูสเปค');
       }
+      case 'สินค้าทั้งหมด':
+        return onAll(token);
       case 'หมวดหมู่สินค้า': {
         const cats = await api('/api/categories');
         return reply(token, text('เลือกหมวดหมู่ที่สนใจได้เลยครับ', {
@@ -151,13 +168,13 @@ export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/
         return reply(token, text(webBase()
           ? `เปรียบเทียบสินค้าได้สูงสุด 4 รายการที่ ${webBase()}/compare`
           : 'หน้าเปรียบเทียบบนเว็บยังไม่เปิดให้ใช้จากภายนอกครับ กด “ดูคุณสมบัติ” บนการ์ดสินค้าเพื่อดูสเปคทีละรายการได้', {
-          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
+          quickReply: quickReply([{ label: 'สินค้าทั้งหมด' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
         }));
       case 'สาขา DTC Shop':
         return onShops(token);
       case 'สั่งซื้อออนไลน์':
         return reply(token, text('เลือกสินค้าแล้วกด “ดูคุณสมบัติ” จะมีปุ่มสั่งซื้อผ่าน Shopee / Lazada / TikTok ของสินค้านั้นครับ หรือพิมพ์สอบถาม/สั่งซื้อในแชตนี้ได้เลย', {
-          quickReply: quickReply([{ label: 'สินค้าแนะนำ' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
+          quickReply: quickReply([{ label: 'สินค้าทั้งหมด' }, searchButton, { label: 'หมวดหมู่สินค้า' }]),
         }));
     }
 
@@ -183,6 +200,7 @@ export function createBot({ api: apiOrigin, webBase, imageBase, productPath = '/
       return reply(ev.replyToken, specBubble(d, ctx));
     }
     if (data.has('shops')) return onShops(ev.replyToken, Math.max(2, Number(data.get('shops')) || 2));
+    if (data.has('all')) return onAll(ev.replyToken, Math.max(2, Number(data.get('all')) || 2));
     if (data.has('more')) return onSearch(ev.replyToken, data.get('more'), Math.max(1, Number(data.get('page')) || 2), null, data.get('more'), data.get('s') || '');
     if (data.has('cat')) {
       const r = await api(`/api/products?category_id=${encodeURIComponent(data.get('cat'))}&sort=popular&limit=10`);
